@@ -1,134 +1,55 @@
 # Kiwi
 
-A fully offline file toolkit — document conversion, image conversion, PDF tools,
-compression, and archives. Everything runs on your machine. Nothing is uploaded
-anywhere.
+Local-first file conversion, PDF tools, image tools, compression, and archives.
 
-## What's inside
+## Conversion coverage
 
-- `server/` — FastAPI backend. Handles all conversion, compression, and archive
-  work using local engines (LibreOffice, Pandoc, Pillow, pikepdf, PyMuPDF,
-  Ghostscript, Tesseract, py7zr). Jobs run in a background worker pool so large
-  files don't block the app.
-- `client/` — React + Tailwind frontend. Five feature pages, all local, no
-  accounts, no limits.
-- `nginx/` — Reverse proxy config and a systemd service file, so you can visit
-  `http://kiwi.local` and have it just work.
+The main converter accepts any file and builds its target list from the available local engines. It currently covers:
 
----
+- Documents and markup: PDF, DOC/DOCX, ODT, RTF, TXT, Markdown, HTML, EPUB, LaTeX, RST, Org, XML, PPT/PPTX/ODP, and common spreadsheet formats.
+- Images: JPG/JPEG, PNG, WebP, AVIF, GIF, BMP, TIFF, ICO, HEIC/HEIF, SVG.
+- Audio/video: MP3, WAV, FLAC, OGG, Opus, M4A, AAC, WMA, MP4, MKV, WebM, AVI, MOV, M4V, MPEG/MPG, 3GP.
+- Archives: ZIP, 7Z, TAR, plus TAR.GZ/TGZ, TAR.BZ2/TBZ2, TAR.XZ/TXZ and RAR extraction.
+- Common code/data text files such as JSON, YAML, TOML, SQL, Python, JavaScript/TypeScript, CSS, Java, C/C++, C#, Go, Rust, PHP, Ruby, shell scripts, and logs can be treated as plain text for document export.
 
-## 1. System dependencies
+The converter does not fake incompatible transformations by changing an extension. Targets are disabled when the current engines cannot produce a meaningful result.
 
-Kiwi's backend shells out to a few well-known open-source tools. Install these
-first (Ubuntu/Debian shown — adjust for your distro):
+## Engines
 
-```bash
-sudo apt update
-sudo apt install -y \
-  python3 python3-venv python3-pip \
-  libreoffice \
-  pandoc \
-  ghostscript \
-  tesseract-ocr \
-  nginx \
-  build-essential libjpeg-dev zlib1g-dev
-```
+Kiwi can use these local tools when installed:
 
-- **LibreOffice** — office document ↔ PDF conversion, and the compression
-  pipeline for docx/pptx/xlsx.
-- **Pandoc** — markdown/html/epub/rtf conversions.
-- **Ghostscript** (`gs`) — PDF compression. If it's missing, Kiwi automatically
-  falls back to a slower rasterize-based compressor, so this is optional but
-  recommended.
-- **Tesseract** — OCR for the PDF Tools page.
-- **nginx** — reverse proxy, so the app is reachable at a clean local address.
+1. LibreOffice — Office formats and PDF export.
+2. Pandoc — document/markup conversion.
+3. FFmpeg — audio/video transcoding and media rendering.
+4. Tesseract OCR — image/PDF text extraction.
+5. Pillow, pillow-heif, CairoSVG — image conversion.
+6. pdfplumber, openpyxl, PyMuPDF — PDF tables, spreadsheets, PDF rendering/extraction.
+7. py7zr and rarfile — 7Z/RAR archive support.
 
-## 2. Backend setup
+## Install
 
-```bash
+### Server
+
+```powershell
 cd server
-python3 -m venv .venv
-source .venv/bin/activate
+python -m venv .venv
+.venv\\Scripts\\activate
 pip install -r requirements.txt
-```
-
-Test it runs:
-
-```bash
 python run.py
 ```
 
-You should see uvicorn start on `127.0.0.1:8420`. Stop it with `Ctrl+C` once
-confirmed — nginx/systemd will manage it going forward.
+### Client
 
-## 3. Frontend build
-
-```bash
+```powershell
 cd client
 npm install
-npm run build
+npm run dev
 ```
 
-This produces a `dist/` folder — the static site nginx will serve.
+## Archive downloads
 
-## 4. Deploy files to their serving location
+Extracted archives are returned as individual result files. **Download all** starts the individual file downloads; Kiwi does not create another ZIP just to download extracted contents.
 
-```bash
-sudo mkdir -p /var/www/kiwi
-sudo cp -r server /var/www/kiwi/
-sudo cp -r client/dist /var/www/kiwi/client
-```
+## Temporary files
 
-(Copy the built `client/dist` contents to `/var/www/kiwi/client` — that's what
-nginx's `root` in the config points at.)
-
-Recreate the virtualenv in the deployed location if you copied it as-is, or
-just copy `server/.venv` along with it — either works.
-
-## 5. Point kiwi.local at your machine
-
-Add this to `/etc/hosts`:
-
-```
-127.0.0.1   kiwi.local
-```
-
-## 6. Install the nginx site
-
-```bash
-sudo cp nginx/kiwi.conf /etc/nginx/sites-available/kiwi.conf
-sudo ln -s /etc/nginx/sites-available/kiwi.conf /etc/nginx/sites-enabled/kiwi.conf
-sudo nginx -t
-sudo systemctl restart nginx
-```
-
-## 7. Run the backend as a background service
-
-```bash
-sudo cp nginx/kiwi-backend.service /etc/systemd/system/kiwi-backend.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now kiwi-backend
-```
-
-Check it's alive:
-
-```bash
-sudo systemctl status kiwi-backend
-curl http://127.0.0.1:8420/api/health
-```
-
-## 8. Open it
-
-Visit **http://kiwi.local** in your browser. That's it.
-
----
-
-## Notes
-
-- All uploaded files and generated outputs live under `server/storage/` and are
-  never sent anywhere else. Clean that folder periodically if disk space
-  matters to you — nothing reads from old jobs after they're downloaded.
-- `KIWI_WORKER_COUNT` (env var, default 2) controls how many conversion jobs
-  run in parallel. Raise it if your machine has CPU to spare.
-- To update the app later: pull new code, re-run `npm run build` in `client/`,
-  re-copy `dist/` to `/var/www/kiwi/client`, and `sudo systemctl restart kiwi-backend`.
+Each job uses a temporary OS workspace. Input files are removed after processing, and completed workspaces expire automatically.

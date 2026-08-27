@@ -16,6 +16,7 @@ export default function App() {
           <Header />
           <Routes>
             <Route path="/" element={<HomePage />} />
+            <Route path="/convert" element={<DocumentConvertPage />} />
             <Route path="/documents" element={<DocumentConvertPage />} />
             <Route path="/images" element={<ImageConvertPage />} />
             <Route path="/pdf" element={<PdfToolsPage />} />

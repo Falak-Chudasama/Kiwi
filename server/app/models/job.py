@@ -1,7 +1,8 @@
 import time
 import uuid
-from enum import Enum
 from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
 from typing import Any
 
 
@@ -31,14 +32,30 @@ class JobKind(str, Enum):
 
 
 @dataclass
+class ResultFile:
+    path: str
+    name: str
+    size: int
+    media_type: str = "application/octet-stream"
+
+    def to_public_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "size": self.size,
+            "media_type": self.media_type,
+        }
+
+
+@dataclass
 class Job:
     kind: JobKind
     payload: dict[str, Any]
+    workspace: Path
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     status: JobStatus = JobStatus.QUEUED
     progress: int = 0
     error: str | None = None
-    result_files: list[str] = field(default_factory=list)
+    result_files: list[ResultFile] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -52,5 +69,5 @@ class Job:
             "status": self.status.value,
             "progress": self.progress,
             "error": self.error,
-            "result_files": self.result_files,
+            "result_files": [item.to_public_dict() for item in self.result_files],
         }

@@ -8,4 +8,9 @@ Pillow==10.4.0
 pillow-heif==0.18.0
 cairosvg==2.7.1
 py7zr==0.21.1
-ocrmypdf==16.4.3
+rarfile==4.2
+pytesseract==0.3.13
+python-docx==1.1.2
+python-pptx==1.0.2
+pdfplumber==0.11.4
+openpyxl==3.1.5

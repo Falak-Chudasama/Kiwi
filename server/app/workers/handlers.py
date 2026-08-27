@@ -2,7 +2,7 @@ from pathlib import Path
 
 from app.core.files import output_dir
 from app.models.job import Job
-from app.services import archives, compression, documents, images, pdf_tools
+from app.services import archives, compression, documents, images, pdf_tools, universal
 from app.workers.queue import task_queue
 
 
@@ -11,117 +11,107 @@ def _paths(job: Job, key: str = "input_paths") -> list[Path]:
 
 
 def handle_document_convert(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
-    target_ext = job.payload["target_ext"]
-    result = documents.convert_document(input_path, target_ext, out_dir)
-    return [str(result)]
+    return [str(p) for p in universal.convert_any(_paths(job)[0], job.payload["target_ext"], output_dir(job.workspace))]
 
 
 def handle_image_convert(job: Job) -> list[str]:
-    out_dir = output_dir()
-    target_ext = job.payload["target_ext"]
-    results = [str(images.convert_image(p, target_ext, out_dir)) for p in _paths(job)]
-    return results
+    out_dir = output_dir(job.workspace)
+    return [
+        str(
+            images.convert_image(
+                p,
+                job.payload["target_ext"],
+                out_dir,
+                width=job.payload.get("width"),
+                height=job.payload.get("height"),
+                fit_mode=job.payload.get("fit_mode", "contain"),
+            )
+        )
+        for p in _paths(job)
+    ]
 
 
 def handle_pdf_merge(job: Job) -> list[str]:
-    out_dir = output_dir()
-    result = pdf_tools.merge_pdfs(_paths(job), out_dir)
-    return [str(result)]
+    return [str(pdf_tools.merge_pdfs(_paths(job), output_dir(job.workspace)))]
 
 
 def handle_pdf_split(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
     ranges = [tuple(r) for r in job.payload["ranges"]]
-    results = pdf_tools.split_pdf(input_path, out_dir, ranges)
-    return [str(p) for p in results]
+    return [str(p) for p in pdf_tools.split_pdf(_paths(job)[0], output_dir(job.workspace), ranges)]
 
 
 def handle_pdf_to_images(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
-    image_format = job.payload.get("image_format", "png")
-    results = pdf_tools.pdf_to_images(input_path, out_dir, image_format)
-    return [str(p) for p in results]
+    return [
+        str(p)
+        for p in pdf_tools.pdf_to_images(
+            _paths(job)[0],
+            output_dir(job.workspace),
+            job.payload.get("image_format", "png"),
+            dpi=int(job.payload.get("dpi", 150)),
+        )
+    ]
 
 
 def handle_images_to_pdf(job: Job) -> list[str]:
-    out_dir = output_dir()
-    result = pdf_tools.images_to_pdf(_paths(job), out_dir)
-    return [str(result)]
+    return [str(pdf_tools.images_to_pdf(_paths(job), output_dir(job.workspace)))]
 
 
 def handle_pdf_rotate(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
-    degrees = job.payload["degrees"]
-    result = pdf_tools.rotate_pdf(input_path, out_dir, degrees)
-    return [str(result)]
+    return [str(pdf_tools.rotate_pdf(_paths(job)[0], output_dir(job.workspace), int(job.payload["degrees"]))) ]
 
 
 def handle_pdf_reorder(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
-    order = job.payload["order"]
-    result = pdf_tools.reorder_pdf(input_path, out_dir, order)
-    return [str(result)]
+    return [str(pdf_tools.reorder_pdf(_paths(job)[0], output_dir(job.workspace), job.payload["order"]))]
 
 
 def handle_pdf_protect(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
-    password = job.payload["password"]
-    result = pdf_tools.protect_pdf(input_path, out_dir, password)
-    return [str(result)]
+    return [str(pdf_tools.protect_pdf(_paths(job)[0], output_dir(job.workspace), job.payload["password"]))]
 
 
 def handle_pdf_unlock(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
-    password = job.payload["password"]
-    result = pdf_tools.unlock_pdf(input_path, out_dir, password)
-    return [str(result)]
+    return [str(pdf_tools.unlock_pdf(_paths(job)[0], output_dir(job.workspace), job.payload["password"]))]
 
 
 def handle_pdf_watermark(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
-    text = job.payload["text"]
-    result = pdf_tools.watermark_pdf(input_path, out_dir, text)
-    return [str(result)]
+    return [
+        str(
+            pdf_tools.watermark_pdf(
+                _paths(job)[0],
+                output_dir(job.workspace),
+                job.payload["text"],
+                fontsize=int(job.payload.get("fontsize", 40)),
+                opacity=float(job.payload.get("opacity", 0.25)),
+                angle=int(job.payload.get("angle", 35)),
+                position=job.payload.get("position", "center"),
+                color=tuple(job.payload.get("color", [120, 120, 120])),
+            )
+        )
+    ]
 
 
 def handle_pdf_ocr(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
-    language = job.payload.get("language", "eng")
-    result = pdf_tools.ocr_pdf(input_path, out_dir, language)
-    return [str(result)]
+    return [str(pdf_tools.ocr_pdf(_paths(job)[0], output_dir(job.workspace), job.payload.get("language", "eng")))]
 
 
 def handle_compress_file(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
-    level = compression.CompressionLevel(job.payload["level"])
-    result = compression.compress_file(input_path, out_dir, level)
-    return [str(result)]
+    return [str(compression.compress_file(_paths(job)[0], output_dir(job.workspace), compression.CompressionLevel(job.payload["level"])))]
 
 
 def handle_archive_create(job: Job) -> list[str]:
-    out_dir = output_dir()
-    archive_format = job.payload["archive_format"]
-    name = job.payload.get("name", "archive")
-    result = archives.create_archive(_paths(job), out_dir, archive_format, name)
-    return [str(result)]
+    return [
+        str(
+            archives.create_archive(
+                _paths(job),
+                output_dir(job.workspace),
+                job.payload["archive_format"],
+                job.payload.get("name"),
+            )
+        )
+    ]
 
 
 def handle_archive_extract(job: Job) -> list[str]:
-    out_dir = output_dir()
-    input_path = _paths(job)[0]
-    results = archives.extract_archive(input_path, out_dir)
-    return [str(p) for p in results]
+    return [str(p) for p in archives.extract_archive(_paths(job)[0], output_dir(job.workspace))]
 
 
 def register_all_handlers() -> None:

@@ -1,8 +1,5 @@
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
-storage/uploads/*
-storage/outputs/*
-!storage/uploads/.gitkeep
-!storage/outputs/.gitkeep
 .env
+*.log

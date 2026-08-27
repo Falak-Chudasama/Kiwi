@@ -23,8 +23,8 @@ export default {
         },
       },
       fontFamily: {
-        heading: ['Quicksand', 'sans-serif'],
-        body: ['Outfit', 'sans-serif'],
+        heading: ['Quicksand', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        body: ['Outfit', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         card: '1.5rem',
