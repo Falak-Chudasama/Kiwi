@@ -120,6 +120,25 @@ class TaskQueue:
 
     @staticmethod
     def _clean_error(exc: Exception) -> str:
+        # KiwiConversionError already carries a frontend-safe message (full
+        # diagnostics -- command, exit code, stdout/stderr -- were logged
+        # internally when the error was raised; see app.core.errors).
+        from app.core.errors import KiwiConversionError
+
+        if isinstance(exc, KiwiConversionError):
+            return exc.safe_message
+
+        # Raw subprocess/OS errors can embed absolute paths and full
+        # command lines; never forward those to the client verbatim.
+        import subprocess as _subprocess
+
+        if isinstance(exc, _subprocess.CalledProcessError):
+            return f"The conversion tool exited with an error (code {exc.returncode})."
+        if isinstance(exc, _subprocess.TimeoutExpired):
+            return "The conversion took too long and was stopped."
+        if isinstance(exc, (OSError, FileNotFoundError)):
+            return "A file system error occurred during conversion."
+
         message = str(exc).strip()
         return message or exc.__class__.__name__
 

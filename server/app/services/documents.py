@@ -4,10 +4,6 @@ import html
 import re
 from pathlib import Path
 
-from app.core.config import settings
-from app.core.files import command_path, run_command
-from app.core.formats import TEXT_DOCUMENTS, extension_of, valid_document_targets
-
 
 def _glyph_currency_amounts(pdf_path: Path) -> set[str] | None:
     """Return the set of number strings that had a currency-glyph image
@@ -119,35 +115,6 @@ def _restore_glyph_currency_symbols(pdf_path: Path) -> list[list[str]] | None:
             pages_out.append(page_lines)
 
     return pages_out if any_glyph_found else None
-
-
-LIBREOFFICE_FILTER_MAP = {
-    "pdf": "pdf",
-    "docx": "docx",
-    "doc": "doc:MS Word 97",
-    "odt": "odt",
-    "rtf": "rtf",
-    "txt": "txt",
-    "html": "html",
-    "htm": "html",
-    "xlsx": "xlsx",
-    "xls": "xls:MS Excel 97",
-    "ods": "ods",
-    "csv": "csv",
-    "pptx": "pptx",
-    "ppt": "ppt:MS PowerPoint 97",
-    "odp": "odp",
-}
-
-
-def _soffice() -> str:
-    return command_path(
-        settings.soffice_bin,
-        [
-            r"C:\Program Files\LibreOffice\program\soffice.exe",
-            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-        ],
-    ) or ""
 
 
 def _strip_markdown(value: str) -> str:
@@ -481,102 +448,3 @@ def convert_to_markdown_with_markitdown(input_path: Path, output_path: Path) -> 
     output_path.write_text(result.text_content, encoding="utf-8")
     return output_path
 
-
-def convert_with_libreoffice(input_path: Path, target_ext: str, out_dir: Path) -> Path:
-    binary = _soffice()
-    if not binary:
-        raise RuntimeError(
-            "LibreOffice is required for this conversion but was not found. "
-            "Install LibreOffice, restart Kiwi, or set KIWI_SOFFICE_BIN."
-        )
-
-    filter_name = LIBREOFFICE_FILTER_MAP.get(target_ext, target_ext)
-    args = [
-        binary,
-        "--headless",
-        "--norestore",
-        "--nolockcheck",
-        "--nodefault",
-        "--convert-to",
-        filter_name,
-        "--outdir",
-        str(out_dir),
-        str(input_path),
-    ]
-
-    try:
-        run_command(args, timeout=240)
-    except RuntimeError as exc:
-        raise RuntimeError(
-            f"LibreOffice could not convert '{input_path.name}' to .{target_ext}. {exc}"
-        ) from exc
-
-    produced = out_dir / f"{input_path.stem}.{target_ext}"
-    if produced.exists():
-        return produced
-
-    matches = [
-        path
-        for path in out_dir.glob(f"{input_path.stem}.*")
-        if path.is_file() and path.suffix.lower().lstrip(".") == target_ext
-    ]
-    if matches:
-        return matches[0]
-
-    raise RuntimeError(
-        f"LibreOffice completed without producing the requested .{target_ext} output."
-    )
-
-
-def convert_document(input_path: Path, target_ext: str, out_dir: Path) -> Path:
-    source_ext = extension_of(input_path.name)
-    target_ext = target_ext.lower().lstrip(".")
-
-    allowed = valid_document_targets(source_ext)
-    if target_ext not in allowed:
-        raise ValueError(f"Conversion from .{source_ext} to .{target_ext} is not supported.")
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    output_path = out_dir / f"{input_path.stem}.{target_ext}"
-
-    if source_ext == "pdf":
-        if target_ext == "txt":
-            return _pdf_to_text(input_path, output_path)
-        if target_ext == "html":
-            return _pdf_to_html(input_path, output_path)
-        if target_ext == "md":
-            return _pdf_to_markdown(input_path, output_path)
-        if target_ext == "docx":
-            return _pdf_to_docx(input_path, output_path)
-        if target_ext == "pptx":
-            return _pdf_to_pptx(input_path, output_path)
-
-    if source_ext in {"md", "markdown"} and target_ext == "txt":
-        output_path.write_text(
-            _strip_markdown(input_path.read_text(encoding="utf-8", errors="replace")),
-            encoding="utf-8",
-        )
-        return output_path
-
-    if source_ext in {"html", "htm"} and target_ext == "txt":
-        output_path.write_text(
-            _html_to_text(input_path.read_text(encoding="utf-8", errors="replace")),
-            encoding="utf-8",
-        )
-        return output_path
-
-    if source_ext == "txt" and target_ext == "md":
-        output_path.write_text(
-            input_path.read_text(encoding="utf-8", errors="replace"),
-            encoding="utf-8",
-        )
-        return output_path
-
-    if source_ext in {"html", "htm"} and target_ext == "md":
-        output_path.write_text(
-            _html_to_text(input_path.read_text(encoding="utf-8", errors="replace")),
-            encoding="utf-8",
-        )
-        return output_path
-
-    return convert_with_libreoffice(input_path, target_ext, out_dir)

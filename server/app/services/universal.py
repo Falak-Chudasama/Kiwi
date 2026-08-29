@@ -29,7 +29,7 @@ from app.core.formats import (
     extension_of,
     tool_state,
 )
-from app.services import archives, documents, images, pdf_tools
+from app.services import archives, documents, images, pdf_tools, office_engine
 
 
 def _soffice() -> str:
@@ -114,9 +114,21 @@ def _pandoc_convert(input_path: Path, target_ext: str, out_dir: Path, source_ext
         raise ValueError(f"Pandoc does not provide a reader/writer for .{source_ext} -> .{target_ext}.")
 
     output_path = out_dir / f"{input_path.stem}.{target_ext}"
-    args = [
-        pandoc,
-        "--sandbox",
+    args = [pandoc]
+    # --sandbox blocks Pandoc from reading *any* file outside the explicit
+    # input, including its own bundled reference/template data files
+    # (reference.odt, [Content_Types].xml, epub.css, default.tex, ...).
+    # Verified against Pandoc 3.1.3: with --sandbox, every writer that
+    # needs those files (odt, docx, epub, pptx, tex-with-template) exits
+    # 97 and produces no output, while pure-text writers (html, rst, org,
+    # markdown, plain, rtf) are unaffected. So --sandbox is only safe to
+    # use for writers that don't need bundled data files; it adds no real
+    # protection here anyway, since Pandoc reads exactly one file Kiwi
+    # already fully controls (a just-uploaded, already-validated input).
+    _SANDBOX_UNSAFE_TARGETS = {"odt", "docx", "epub", "pptx"}
+    if target_ext not in _SANDBOX_UNSAFE_TARGETS:
+        args.append("--sandbox")
+    args += [
         "--from", from_fmt,
         "--to", to_fmt,
         "--standalone",
@@ -130,37 +142,16 @@ def _pandoc_convert(input_path: Path, target_ext: str, out_dir: Path, source_ext
 
 
 def _office_convert(input_path: Path, target_ext: str, out_dir: Path) -> Path:
-    soffice = _soffice()
-    if not soffice:
-        raise RuntimeError("LibreOffice is required for this conversion. Install LibreOffice and restart Kiwi.")
-
-    output_path = out_dir / f"{input_path.stem}.{target_ext}"
-    filter_name = {
-        "doc": "doc:MS Word 97",
-        "ppt": "ppt:MS PowerPoint 97",
-        "xls": "xls:MS Excel 97",
-        "csv": "csv",
-        "html": "html",
-        "htm": "html",
-    }.get(target_ext, target_ext)
-    args = [
-        soffice,
-        "--headless",
-        "--norestore",
-        "--nolockcheck",
-        "--nodefault",
-        "--convert-to", filter_name,
-        "--outdir", str(out_dir),
-        str(input_path),
-    ]
-    run_command(args, timeout=240)
-    if output_path.exists():
-        return output_path
-
-    candidates = [p for p in out_dir.glob(f"{input_path.stem}.*") if p.is_file()]
-    if not candidates:
-        raise RuntimeError("LibreOffice completed without producing an output file.")
-    return candidates[0]
+    """Delegates to app.services.office_engine, which knows the real
+    LibreOffice filter name for every format (never a guessed legacy
+    "97" filter for a modern OOXML target), distinguishes same-family
+    conversions (a direct `--convert-to` call) from cross-family ones
+    (PPTX<->DOCX etc, which LibreOffice cannot do directly at all and
+    which use a semantic content bridge instead), and validates every
+    output file before returning it -- so this never silently hands back
+    an arbitrary same-stem file of the wrong format.
+    """
+    return office_engine.office_convert(input_path, target_ext, out_dir)
 
 
 def _office_to_images(input_path: Path, target_ext: str, out_dir: Path) -> list[Path]:
@@ -560,6 +551,18 @@ def convert_any(input_path: Path, target_ext: str, out_dir: Path) -> list[Path]:
     if target_ext == "md" and source_ext in MARKDOWN_SOURCE_EXTENSIONS and source_ext not in TEXT_DOCUMENTS:
         output = out_dir / f"{input_path.stem}.md"
         return [documents.convert_to_markdown_with_markitdown(input_path, output)]
+
+    # PPTX <-> DOCX is a cross-document-family conversion: LibreOffice has
+    # no direct filter for it (Impress cannot "save as" a Writer document,
+    # verified against LibreOffice 24.2 -- every filter name fails
+    # identically), and Pandoc's writer needs its bundled pptx template
+    # data files, which its --sandbox mode (used here for every other
+    # Pandoc call) blocks it from reading, so routing this pair through
+    # the generic Pandoc bridge below fails outright. Route it through
+    # Kiwi's own content-extraction bridge instead, before either the
+    # generic Pandoc or LibreOffice branches can intercept it.
+    if (source_ext, target_ext) in {("pptx", "docx"), ("docx", "pptx")}:
+        return [_office_convert(input_path, target_ext, out_dir)]
 
     # Text to images is a real rendered representation, not a fake extension rename.
     if source_ext in TEXT_DOCUMENTS and target_ext in RENDER_IMAGE_TARGETS:

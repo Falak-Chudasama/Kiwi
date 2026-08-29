@@ -31,6 +31,15 @@ def output_dir(workspace: Path) -> Path:
 
 
 def run_command(args: list[str], timeout: int = 300) -> subprocess.CompletedProcess:
+    """Run a subprocess, capturing output. Raises the *original*
+    subprocess exceptions (CalledProcessError / TimeoutExpired). Callers
+    that want Kiwi's structured error type -- a safe, short message for
+    the frontend plus full command/exit-code/stdout/stderr diagnostics in
+    the server log -- should catch those and re-raise via
+    app.core.errors.KiwiConversionError instead of letting the raw
+    subprocess exception (which can include full local paths) reach the
+    API layer. See app.services.office_engine for the pattern.
+    """
     return subprocess.run(
         args,
         capture_output=True,

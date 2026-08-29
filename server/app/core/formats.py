@@ -57,7 +57,13 @@ PANDOC_INPUTS = {
     "odt": "odt",
     "rtf": "rtf",
     "epub": "epub",
-    "pptx": "pptx",
+    # NOTE: pptx is intentionally absent here. Pandoc can *write* pptx
+    # (see PANDOC_OUTPUTS) but its CLI does not list pptx as a readable
+    # input format (`pandoc --list-input-formats` omits it, and
+    # `pandoc --from pptx` fails with "Unknown input format pptx").
+    # Claiming it as a reader made convert_any() route pptx -> docx into a
+    # doomed Pandoc call. PPTX as a *source* now goes through
+    # app.services.office_engine's semantic bridge instead.
 }
 
 PANDOC_OUTPUTS = {
@@ -135,6 +141,42 @@ def _command_available(name: str, candidates: list[str] | None = None) -> bool:
     from app.core.files import command_path
 
     return bool(command_path(name, candidates or []))
+
+
+_OFFICE_TARGET_EXTS = {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm",
+                        "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}
+
+# Cross-family pairs that have a real Kiwi semantic bridge (see
+# app.services.office_engine) even though LibreOffice itself has no direct
+# filter for them. Kept as plain (source, target) tuples here rather than
+# importing office_engine (which imports python-docx/pptx at module scope)
+# so formats.py stays import-light for the capability-matrix endpoint.
+_OFFICE_SEMANTIC_BRIDGES = {("pptx", "docx"), ("docx", "pptx")}
+
+
+def _office_target_support(s: str, t: str, tools: dict[str, bool]) -> tuple[bool, str | None] | None:
+    """Family-aware replacement for the old blanket "LibreOffice can do any
+    office-ish target" checks. Returns None if `t` isn't an office-engine
+    target at all (caller should fall through to its next check).
+    """
+    if t not in _OFFICE_TARGET_EXTS:
+        return None
+    if (s, t) in _OFFICE_SEMANTIC_BRIDGES:
+        return True, None  # Kiwi's own bridge, no external engine required
+    # Same LibreOffice document family (or any family -> pdf/html), which
+    # LibreOffice can actually perform directly.
+    writer = {"doc", "docx", "odt", "rtf", "txt", "html", "htm"}
+    calc = {"xls", "xlsx", "ods", "csv"}
+    impress = {"ppt", "pptx", "odp"}
+    same_family = (
+        (s in writer and t in writer)
+        or (s in calc and t in calc)
+        or (s in impress and t in impress)
+        or t == "pdf"
+    )
+    if same_family:
+        return tools["libreoffice"], "Requires LibreOffice"
+    return False, "No same-family LibreOffice filter and no semantic bridge exists for this pair"
 
 
 def tool_state() -> dict[str, bool]:
@@ -408,15 +450,19 @@ def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[s
         return False, "Use a document, image, or spreadsheet representation for text data"
 
     # Word-processor documents (doc/docx/odt/rtf): these are not in
-    # TEXT_DOCUMENTS, so convert_any falls through to the Pandoc bridge and,
-    # failing that, the LibreOffice catch-all.
+    # TEXT_DOCUMENTS, so convert_any checks the PPTX<->DOCX semantic bridge
+    # first (_office_target_support handles that), then the Pandoc bridge,
+    # then falls to the LibreOffice catch-all.
     if s in WORD_DOCUMENTS:
         if t == "md" and s in MARKDOWN_SOURCE_EXTENSIONS:
             return tools["markitdown"], "Requires MarkItDown"
+        if (s, t) in _OFFICE_SEMANTIC_BRIDGES:
+            return _office_target_support(s, t, tools)
         if t in PANDOC_OUTPUTS and s in PANDOC_INPUTS:
             return tools["pandoc"], "Requires Pandoc"
-        if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:
-            return tools["libreoffice"], "Requires LibreOffice"
+        office = _office_target_support(s, t, tools)
+        if office is not None:
+            return office
         if t in RENDER_IMAGE_TARGETS:
             return tools["libreoffice"], "Requires LibreOffice"
         return False, "No installed converter can perform this conversion"
@@ -426,8 +472,9 @@ def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[s
     if s in SPREADSHEETS:
         if t == "md" and s in MARKDOWN_SOURCE_EXTENSIONS:
             return tools["markitdown"], "Requires MarkItDown"
-        if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:
-            return tools["libreoffice"], "Requires LibreOffice"
+        office = _office_target_support(s, t, tools)
+        if office is not None:
+            return office
         if t in RENDER_IMAGE_TARGETS:
             return tools["libreoffice"], "Requires LibreOffice"
         return False, "Spreadsheet data has no reliable representation in this target"
@@ -438,8 +485,9 @@ def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[s
             return tools["markitdown"], "Requires MarkItDown"
         if s in PANDOC_INPUTS and t in PANDOC_OUTPUTS:
             return tools["pandoc"], "Requires Pandoc"
-        if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:
-            return tools["libreoffice"], "Requires LibreOffice"
+        office = _office_target_support(s, t, tools)
+        if office is not None:
+            return office
         if t in RENDER_IMAGE_TARGETS:
             return tools["libreoffice"], "Requires LibreOffice"
         return False, "Presentation content has no reliable representation in this target"
@@ -449,8 +497,9 @@ def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[s
         return tools["pandoc"], "Requires Pandoc"
 
     # Final LibreOffice catch-all, matching convert_any's last resort.
-    if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:
-        return tools["libreoffice"], "Requires LibreOffice"
+    office = _office_target_support(s, t, tools)
+    if office is not None:
+        return office
     if t in RENDER_IMAGE_TARGETS:
         return tools["libreoffice"], "Requires LibreOffice"
 
