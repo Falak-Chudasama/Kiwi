@@ -75,6 +75,14 @@ PANDOC_OUTPUTS = {
     "pptx": "pptx",
 }
 
+# Formats that markitdown (or, for PDF specifically, pymupdf4llm) can turn
+# into real structured Markdown -- headings, tables, lists -- rather than a
+# flat text dump. This is the "x -> md" side of document conversion.
+MARKDOWN_SOURCE_EXTENSIONS = {
+    "pdf", "docx", "doc", "odt", "rtf", "pptx", "ppt", "odp",
+    "xlsx", "xls", "ods", "csv", "html", "htm", "epub",
+}
+
 
 def extension_of(filename: str) -> str:
     lower = filename.lower()
@@ -163,6 +171,10 @@ def tool_state() -> dict[str, bool]:
         ),
         "py7zr": _module_available("py7zr"),
         "rarfile": _module_available("rarfile"),
+        "pdf2docx": _module_available("pdf2docx"),
+        "pymupdf4llm": _module_available("pymupdf4llm"),
+        "markitdown": _module_available("markitdown"),
+        "oxipng": _module_available("oxipng"),
     }
 
 
@@ -246,6 +258,46 @@ ENGINE_INFO: list[dict[str, Any]] = [
             "linux": "pip install rarfile  (and: sudo apt install unrar)",
         },
     },
+    {
+        "key": "pdf2docx",
+        "name": "pdf2docx (Python package)",
+        "unlocks": "High-fidelity PDF to DOCX conversion with real tables, paragraphs, and layout",
+        "install": {
+            "windows": "pip install pdf2docx",
+            "macos": "pip install pdf2docx",
+            "linux": "pip install pdf2docx",
+        },
+    },
+    {
+        "key": "pymupdf4llm",
+        "name": "PyMuPDF4LLM (Python package)",
+        "unlocks": "Structured PDF to Markdown conversion (headings, tables, lists)",
+        "install": {
+            "windows": "pip install pymupdf4llm",
+            "macos": "pip install pymupdf4llm",
+            "linux": "pip install pymupdf4llm",
+        },
+    },
+    {
+        "key": "markitdown",
+        "name": "MarkItDown (Python package)",
+        "unlocks": "Word/PowerPoint/Excel/HTML/image to Markdown conversion",
+        "install": {
+            "windows": "pip install \"markitdown[all]\"",
+            "macos": "pip install \"markitdown[all]\"",
+            "linux": "pip install \"markitdown[all]\"",
+        },
+    },
+    {
+        "key": "oxipng",
+        "name": "oxipng (Python package)",
+        "unlocks": "Best-in-class lossless PNG compression",
+        "install": {
+            "windows": "pip install pyoxipng",
+            "macos": "pip install pyoxipng",
+            "linux": "pip install pyoxipng",
+        },
+    },
 ]
 
 
@@ -299,8 +351,10 @@ def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[s
                 return tools["libreoffice"], "Requires LibreOffice"
         if t in {"ppt", "odp"}:
             return tools["libreoffice"], "Requires LibreOffice"
-        if t in {"md", "epub", "tex", "rst", "org"}:
-            return tools["pandoc"], "Requires Pandoc"
+        if t == "md":
+            return tools["pymupdf4llm"], "Requires PyMuPDF4LLM"
+        if t in {"epub", "tex", "rst", "org"}:
+            return tools["pymupdf4llm"] and tools["pandoc"], "Requires PyMuPDF4LLM and Pandoc"
         return False, "No meaningful PDF representation for this target"
 
     # Images: mirrors "if source_ext in IMAGE_EXTENSIONS".
@@ -356,6 +410,8 @@ def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[s
     # TEXT_DOCUMENTS, so convert_any falls through to the Pandoc bridge and,
     # failing that, the LibreOffice catch-all.
     if s in WORD_DOCUMENTS:
+        if t == "md" and s in MARKDOWN_SOURCE_EXTENSIONS:
+            return tools["markitdown"], "Requires MarkItDown"
         if t in PANDOC_OUTPUTS and s in PANDOC_INPUTS:
             return tools["pandoc"], "Requires Pandoc"
         if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:
@@ -367,6 +423,8 @@ def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[s
     # Spreadsheets: convert_any has no dedicated branch, so these fall
     # through to the LibreOffice catch-all (or image rendering).
     if s in SPREADSHEETS:
+        if t == "md" and s in MARKDOWN_SOURCE_EXTENSIONS:
+            return tools["markitdown"], "Requires MarkItDown"
         if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:
             return tools["libreoffice"], "Requires LibreOffice"
         if t in RENDER_IMAGE_TARGETS:
@@ -375,6 +433,8 @@ def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[s
 
     # Presentations: same fallthrough as spreadsheets, but pptx can also use Pandoc.
     if s in PRESENTATIONS:
+        if t == "md" and s in MARKDOWN_SOURCE_EXTENSIONS:
+            return tools["markitdown"], "Requires MarkItDown"
         if s in PANDOC_INPUTS and t in PANDOC_OUTPUTS:
             return tools["pandoc"], "Requires Pandoc"
         if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:

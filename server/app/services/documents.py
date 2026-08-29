@@ -117,86 +117,38 @@ def _block_font_size(block: dict) -> float:
 
 
 def _pdf_to_docx(input_path: Path, output_path: Path) -> Path:
-    """Create an editable DOCX approximation of a PDF.
+    """Convert a PDF to an editable DOCX using pdf2docx.
 
-    General PDFs do not contain enough semantic information to guarantee a
-    perfect Word reconstruction. This converter extracts positioned text
-    blocks and embedded raster images while preserving page boundaries.
+    pdf2docx reconstructs real Word paragraphs, native tables (not text
+    dumped into a single column), fonts, and image placement by analyzing
+    the PDF's layout structure -- this is a purpose-built converter rather
+    than a hand-rolled text-block dump, and it is what produces documents
+    that actually look like the source PDF when opened in Word.
     """
-    import fitz
-    from docx import Document
-    from docx.enum.text import WD_BREAK, WD_ALIGN_PARAGRAPH
-    from docx.shared import Inches, Pt
+    from pdf2docx import Converter
 
-    pdf = fitz.open(input_path)
-    doc = Document()
-
-    section = doc.sections[0]
-    section.top_margin = Inches(0.55)
-    section.bottom_margin = Inches(0.55)
-    section.left_margin = Inches(0.65)
-    section.right_margin = Inches(0.65)
-
+    converter = Converter(str(input_path))
     try:
-        for page_index, page in enumerate(pdf):
-            page_dict = page.get_text("dict")
-            text_blocks = [b for b in page_dict.get("blocks", []) if b.get("type") == 0]
-            image_blocks = [b for b in page_dict.get("blocks", []) if b.get("type") == 1 and b.get("image")]
-
-            # Reading order from the PDF block coordinates.
-            text_blocks.sort(key=lambda block: (block.get("bbox", [0, 0, 0, 0])[1], block.get("bbox", [0, 0, 0, 0])[0]))
-
-            if not text_blocks and not image_blocks:
-                paragraph = doc.add_paragraph()
-                paragraph.add_run(f"[Page {page_index + 1} contains no extractable text or raster images]")
-            else:
-                for block in text_blocks:
-                    text = _pdf_block_text(block)
-                    if not text:
-                        continue
-
-                    paragraph = doc.add_paragraph()
-                    paragraph.paragraph_format.space_after = Pt(3)
-                    paragraph.paragraph_format.line_spacing = 1.0
-
-                    size = _block_font_size(block)
-                    first_span = None
-                    for line in block.get("lines", []):
-                        for span in line.get("spans", []):
-                            first_span = span
-                            break
-                        if first_span:
-                            break
-
-                    run = paragraph.add_run(text)
-                    run.font.size = Pt(size)
-                    run.font.name = "Arial"
-
-                    if first_span and (int(first_span.get("flags", 0)) & 16):
-                        run.bold = True
-
-                # Embedded images are inserted after the text for the page.
-                # Their original coordinates cannot always be represented by
-                # a flow layout in DOCX, so preserving the image itself is the
-                # safer behavior than silently dropping it.
-                for image_index, block in enumerate(image_blocks, start=1):
-                    image_bytes = block.get("image")
-                    if not image_bytes:
-                        continue
-                    paragraph = doc.add_paragraph()
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    try:
-                        paragraph.add_run().add_picture(io.BytesIO(image_bytes), width=Inches(6.2))
-                    except Exception:
-                        continue
-
-            if page_index < len(pdf) - 1:
-                doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
-
-        doc.save(output_path)
+        converter.convert(str(output_path))
     finally:
-        pdf.close()
+        converter.close()
 
+    if not output_path.exists():
+        raise RuntimeError("pdf2docx did not produce the requested output file.")
+    return output_path
+
+
+def _pdf_to_markdown(input_path: Path, output_path: Path) -> Path:
+    """Convert a PDF to structured Markdown using PyMuPDF4LLM.
+
+    Unlike a raw text dump, this detects headings (by font size), bold and
+    italic runs, ordered/unordered lists, and tables, and emits them as
+    proper GitHub-flavored Markdown in reading order.
+    """
+    import pymupdf4llm
+
+    markdown_text = pymupdf4llm.to_markdown(str(input_path))
+    output_path.write_text(markdown_text, encoding="utf-8")
     return output_path
 
 
@@ -307,6 +259,22 @@ def _pdf_to_pptx(input_path: Path, output_path: Path) -> Path:
     return output_path
 
 
+def convert_to_markdown_with_markitdown(input_path: Path, output_path: Path) -> Path:
+    """Convert Word/PowerPoint/Excel/HTML/image files to Markdown using MarkItDown.
+
+    MarkItDown (Microsoft, MIT-licensed) is a purpose-built converter for
+    this exact job: it understands each container format natively (docx via
+    python-docx/mammoth, xlsx via openpyxl, pptx via python-pptx, html via
+    a real parser) rather than approximating structure from a text dump.
+    """
+    from markitdown import MarkItDown
+
+    converter = MarkItDown(enable_plugins=False)
+    result = converter.convert(str(input_path))
+    output_path.write_text(result.text_content, encoding="utf-8")
+    return output_path
+
+
 def convert_with_libreoffice(input_path: Path, target_ext: str, out_dir: Path) -> Path:
     binary = _soffice()
     if not binary:
@@ -369,6 +337,8 @@ def convert_document(input_path: Path, target_ext: str, out_dir: Path) -> Path:
             return _pdf_to_text(input_path, output_path)
         if target_ext == "html":
             return _pdf_to_html(input_path, output_path)
+        if target_ext == "md":
+            return _pdf_to_markdown(input_path, output_path)
         if target_ext == "docx":
             return _pdf_to_docx(input_path, output_path)
         if target_ext == "pptx":

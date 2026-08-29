@@ -44,6 +44,32 @@ GHOSTSCRIPT_PRESET_BY_LEVEL = {
 }
 
 
+def _oxipng_optimize_in_place(png_path: Path, level: CompressionLevel) -> None:
+    """Run a final lossless pass with oxipng on top of Pillow's encode.
+
+    oxipng re-derives the optimal PNG filter/deflate strategy per scanline
+    and typically shaves another 5-20% off Pillow's already-optimized
+    output at zero quality cost. It's a Rust binary shipped as prebuilt
+    wheels, so this never requires a compiler on the user's machine. If the
+    package isn't installed, compression still works via Pillow alone.
+    """
+    try:
+        import oxipng
+    except ImportError:
+        return
+    effort_by_level = {
+        CompressionLevel.LOW: 2,
+        CompressionLevel.MEDIUM: 3,
+        CompressionLevel.HIGH: 4,
+        CompressionLevel.EXTREME: 6,
+    }
+    try:
+        oxipng.optimize(str(png_path), level=effort_by_level.get(level, 3))
+    except Exception:
+        # Never let a best-effort optimization pass break compression.
+        pass
+
+
 def _never_larger(original: Path, candidate: Path) -> Path:
     if candidate.exists() and candidate.stat().st_size < original.stat().st_size:
         return candidate
@@ -87,6 +113,7 @@ def compress_image(input_path: Path, out_dir: Path, level: CompressionLevel) -> 
                     else:
                         rgba = rgba.quantize(colors=colors, method=Image.Quantize.FASTOCTREE)
                 rgba.save(output_path, format="PNG", optimize=True, compress_level=9)
+                _oxipng_optimize_in_place(output_path, level)
             elif ext == "webp":
                 image.save(output_path, format="WEBP", quality=quality, method=6)
             elif ext in ("tiff", "tif"):

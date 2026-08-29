@@ -11,6 +11,15 @@ from app.core.config import settings
 from app.core.files import command_path
 
 
+def _oxipng_optimize(png_path: Path) -> None:
+    """Best-effort lossless PNG re-optimization; skipped if oxipng isn't installed."""
+    try:
+        import oxipng
+        oxipng.optimize(str(png_path), level=3)
+    except Exception:
+        pass
+
+
 def merge_pdfs(input_paths: list[Path], out_dir: Path) -> Path:
     if len(input_paths) < 2:
         raise ValueError("Select at least two PDFs to merge.")
@@ -99,6 +108,7 @@ def pdf_to_images(input_path: Path, out_dir: Path, image_format: str, dpi: int =
                 image.save(page_path, format="WEBP", quality=90, method=6)
             else:
                 image.save(page_path, format="PNG", optimize=True)
+                _oxipng_optimize(page_path)
             image.close()
             outputs.append(page_path)
     finally:

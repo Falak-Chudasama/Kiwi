@@ -17,6 +17,7 @@ from app.core.formats import (
     IMAGE_EXTENSIONS,
     MEDIA_IMAGE_TARGETS,
     RENDER_IMAGE_TARGETS,
+    MARKDOWN_SOURCE_EXTENSIONS,
     PANDOC_INPUTS,
     PANDOC_OUTPUTS,
     PRESENTATIONS,
@@ -27,7 +28,7 @@ from app.core.formats import (
     extension_of,
     tool_state,
 )
-from app.services import archives, images, pdf_tools
+from app.services import archives, documents, images, pdf_tools
 
 
 def _soffice() -> str:
@@ -454,6 +455,8 @@ def convert_any(input_path: Path, target_ext: str, out_dir: Path) -> list[Path]:
         if target_ext == "html":
             output = out_dir / f"{input_path.stem}.html"
             return [_write_text_output(_text_from_pdf(input_path), "html", output)]
+        if target_ext == "md":
+            return [documents_pdf_to_markdown(input_path, out_dir)]
         if target_ext == "docx":
             return [documents_pdf_to_docx(input_path, out_dir)]
         if target_ext == "pptx":
@@ -469,11 +472,13 @@ def convert_any(input_path: Path, target_ext: str, out_dir: Path) -> list[Path]:
         if target_ext in {"ppt", "odp"}:
             intermediate = documents_pdf_to_pptx(input_path, out_dir)
             return [_office_convert(intermediate, target_ext, out_dir)]
-        if target_ext in {"md", "epub", "tex", "rst", "org"}:
-            text_path = out_dir / f"{input_path.stem}.md"
-            text_path.write_text(_text_from_pdf(input_path), encoding="utf-8")
-            result = _pandoc_convert(text_path, target_ext, out_dir, "md")
-            text_path.unlink(missing_ok=True)
+        if target_ext in {"epub", "tex", "rst", "org"}:
+            # Route through the structured Markdown extraction (headings,
+            # tables, lists) rather than a flat text dump, then let Pandoc
+            # do the markup translation it's actually built for.
+            md_path = documents_pdf_to_markdown(input_path, out_dir)
+            result = _pandoc_convert(md_path, target_ext, out_dir, "md")
+            md_path.unlink(missing_ok=True)
             return [result]
 
     # Images.
@@ -498,6 +503,13 @@ def convert_any(input_path: Path, target_ext: str, out_dir: Path) -> list[Path]:
             finally:
                 jpg.unlink(missing_ok=True)
         return [_media_convert(input_path, target_ext, out_dir)]
+
+    # Any office/markup document to Markdown goes through MarkItDown, which
+    # understands each container format natively instead of approximating
+    # structure from a flat text dump.
+    if target_ext == "md" and source_ext in MARKDOWN_SOURCE_EXTENSIONS and source_ext not in TEXT_DOCUMENTS:
+        output = out_dir / f"{input_path.stem}.md"
+        return [documents.convert_to_markdown_with_markitdown(input_path, output)]
 
     # Text to images is a real rendered representation, not a fake extension rename.
     if source_ext in TEXT_DOCUMENTS and target_ext in RENDER_IMAGE_TARGETS:
@@ -529,7 +541,7 @@ def convert_any(input_path: Path, target_ext: str, out_dir: Path) -> list[Path]:
 
 
 def documents_pdf_to_docx(input_path: Path, out_dir: Path) -> Path:
-    # Keep the existing high-quality PDF block extractor.
+    # pdf2docx: purpose-built PDF -> DOCX converter with real tables/layout.
     from app.services.documents import _pdf_to_docx
     return _pdf_to_docx(input_path, out_dir / f"{input_path.stem}.docx")
 
@@ -537,3 +549,9 @@ def documents_pdf_to_docx(input_path: Path, out_dir: Path) -> Path:
 def documents_pdf_to_pptx(input_path: Path, out_dir: Path) -> Path:
     from app.services.documents import _pdf_to_pptx
     return _pdf_to_pptx(input_path, out_dir / f"{input_path.stem}.pptx")
+
+
+def documents_pdf_to_markdown(input_path: Path, out_dir: Path) -> Path:
+    # PyMuPDF4LLM: structured PDF -> Markdown (headings, tables, lists).
+    from app.services.documents import _pdf_to_markdown
+    return _pdf_to_markdown(input_path, out_dir / f"{input_path.stem}.md")

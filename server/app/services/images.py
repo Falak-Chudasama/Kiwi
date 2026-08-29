@@ -9,6 +9,20 @@ import pillow_heif
 
 pillow_heif.register_heif_opener()
 
+
+def _oxipng_optimize(png_path: Path) -> None:
+    """Best-effort lossless PNG re-optimization pass on top of Pillow's encode.
+
+    oxipng finds a better filter/deflate strategy than Pillow's built-in
+    encoder and typically shaves extra bytes off at no quality cost. Silently
+    skipped if the optional oxipng package isn't installed.
+    """
+    try:
+        import oxipng
+        oxipng.optimize(str(png_path), level=3)
+    except Exception:
+        pass
+
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
 PILLOW_SAVE_FORMAT = {
     "jpg": "JPEG", "jpeg": "JPEG", "png": "PNG", "webp": "WEBP", "avif": "AVIF",
@@ -98,4 +112,6 @@ def convert_image(
         prepared.save(output_path, format=save_format, **save_kwargs)
 
     source.close()
+    if target_ext == "png":
+        _oxipng_optimize(output_path)
     return output_path
