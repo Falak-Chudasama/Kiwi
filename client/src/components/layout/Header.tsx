@@ -30,7 +30,6 @@ export function Header() {
             </NavLink>
           ))}
         </nav>
-        <span className="rounded-full border border-kiwi-flesh-100 bg-white px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-kiwi-flesh-700">Local</span>
       </div>
     </header>
   )
