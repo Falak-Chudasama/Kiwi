@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import html
 import io
+import re
 import shutil
 import subprocess
 import tempfile
@@ -67,9 +68,21 @@ def _text_from_pdf(input_path: Path) -> str:
         for index, page in enumerate(doc, start=1):
             text = page.get_text("text").strip()
             pages.append(f"## Page {index}\n\n{text}" if text else f"## Page {index}\n")
-        return "\n\n".join(pages)
+        result = "\n\n".join(pages)
     finally:
         doc.close()
+
+    # Patch in currency symbols the PDF drew as tiny raster images instead
+    # of text glyphs (see documents._glyph_currency_amounts for why).
+    amounts = documents._glyph_currency_amounts(input_path)
+    if amounts:
+        for amount in sorted(amounts, key=len, reverse=True):
+            result = re.sub(
+                rf"(?<![\d.,\u20b9]){re.escape(amount)}(?![\d.,])",
+                "\u20b9" + amount,
+                result,
+            )
+    return result
 
 
 def _write_text_output(text: str, target_ext: str, output_path: Path) -> Path:
