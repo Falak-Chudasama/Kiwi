@@ -465,8 +465,6 @@ def convert_any(input_path: Path, target_ext: str, out_dir: Path) -> list[Path]:
             return [_pdf_tables(input_path, target_ext, out_dir)]
         if target_ext in {"doc", "odt", "rtf"}:
             intermediate = documents_pdf_to_docx(input_path, out_dir)
-            if target_ext == "docx":
-                return [intermediate]
             return [_office_convert(intermediate, target_ext, out_dir)]
         if target_ext in {"ppt", "odp"}:
             intermediate = documents_pdf_to_pptx(input_path, out_dir)

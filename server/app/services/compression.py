@@ -57,34 +57,50 @@ def compress_image(input_path: Path, out_dir: Path, level: CompressionLevel) -> 
     ext = input_path.suffix.lower().lstrip(".")
     output_path = out_dir / f"{input_path.stem}_compressed.{ext}"
     image = Image.open(input_path)
-    scale = IMAGE_SCALE_BY_LEVEL[level]
-    if scale < 1.0:
-        image = image.resize(
-            (
-                max(1, round(image.width * scale)),
-                max(1, round(image.height * scale)),
-            ),
-            Image.Resampling.LANCZOS,
-        )
+    try:
+        scale = IMAGE_SCALE_BY_LEVEL[level]
+        if scale < 1.0:
+            image = image.resize(
+                (
+                    max(1, round(image.width * scale)),
+                    max(1, round(image.height * scale)),
+                ),
+                Image.Resampling.LANCZOS,
+            )
 
-    quality = IMAGE_QUALITY_BY_LEVEL[level]
-    if ext in ("jpg", "jpeg"):
-        image.convert("RGB").save(
-            output_path, format="JPEG", quality=quality, optimize=True, progressive=True
-        )
-    elif ext == "png":
-        rgba = image.convert("RGBA")
-        if level in (CompressionLevel.HIGH, CompressionLevel.EXTREME):
-            colors = 192 if level == CompressionLevel.HIGH else 128
-            rgba = rgba.quantize(colors=colors, method=Image.Quantize.MEDIANCUT)
-        rgba.save(output_path, format="PNG", optimize=True, compress_level=9)
-    elif ext == "webp":
-        image.save(output_path, format="WEBP", quality=quality, method=6)
-    elif ext in ("tiff", "tif"):
-        image.save(output_path, format="TIFF", compression="tiff_adobe_deflate")
-    else:
-        image.save(output_path, quality=quality)
-    image.close()
+        quality = IMAGE_QUALITY_BY_LEVEL[level]
+        try:
+            if ext in ("jpg", "jpeg"):
+                image.convert("RGB").save(
+                    output_path, format="JPEG", quality=quality, optimize=True, progressive=True
+                )
+            elif ext == "png":
+                rgba = image.convert("RGBA")
+                if level in (CompressionLevel.HIGH, CompressionLevel.EXTREME):
+                    colors = 192 if level == CompressionLevel.HIGH else 128
+                    # RGBA images can only be quantized with FASTOCTREE (2) or
+                    # libimagequant (3) in Pillow; MEDIANCUT/MAXCOVERAGE only work
+                    # on non-alpha images and raise ValueError on RGBA input.
+                    if rgba.getchannel("A").getextrema() == (255, 255):
+                        # Fully opaque: drop alpha so MEDIANCUT (better quality) applies.
+                        rgba = rgba.convert("RGB").quantize(colors=colors, method=Image.Quantize.MEDIANCUT).convert("RGBA")
+                    else:
+                        rgba = rgba.quantize(colors=colors, method=Image.Quantize.FASTOCTREE)
+                rgba.save(output_path, format="PNG", optimize=True, compress_level=9)
+            elif ext == "webp":
+                image.save(output_path, format="WEBP", quality=quality, method=6)
+            elif ext in ("tiff", "tif"):
+                image.save(output_path, format="TIFF", compression="tiff_adobe_deflate")
+            else:
+                image.convert("RGB").save(output_path, quality=quality)
+        except (ValueError, OSError):
+            # Any format-specific quirk (unsupported quantize mode, missing
+            # codec, exotic color mode, etc.) falls back to a safe re-encode
+            # so compression never hard-fails a supported image format.
+            output_path.unlink(missing_ok=True)
+            image.convert("RGB").save(output_path)
+    finally:
+        image.close()
     return _never_larger(input_path, output_path)
 
 

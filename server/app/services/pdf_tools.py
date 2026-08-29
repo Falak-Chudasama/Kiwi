@@ -106,11 +106,31 @@ def pdf_to_images(input_path: Path, out_dir: Path, image_format: str, dpi: int =
     return outputs
 
 
+def _open_any_image(path: Path) -> Image.Image:
+    """Open an image for PDF assembly, including formats Pillow can't read directly."""
+    ext = path.suffix.lower().lstrip(".")
+    if ext == "svg":
+        import cairosvg
+
+        png_bytes = cairosvg.svg2png(url=str(path))
+        return Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    if ext in {"heic", "heif"}:
+        import pillow_heif
+
+        pillow_heif.register_heif_opener()
+    try:
+        return Image.open(path).convert("RGB")
+    except Exception as exc:
+        raise ValueError(
+            f"'{path.name}' could not be read as an image. It may be corrupted or in an unsupported format."
+        ) from exc
+
+
 def images_to_pdf(input_paths: list[Path], out_dir: Path) -> Path:
     if not input_paths:
         raise ValueError("Select at least one image.")
     output_path = out_dir / "combined.pdf"
-    images = [Image.open(p).convert("RGB") for p in input_paths]
+    images = [_open_any_image(p) for p in input_paths]
     try:
         first, rest = images[0], images[1:]
         first.save(output_path, save_all=True, append_images=rest)

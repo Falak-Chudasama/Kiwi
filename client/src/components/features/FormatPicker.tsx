@@ -21,6 +21,8 @@ interface FormatPickerProps {
   options: FormatOption[]
   value: string | null
   onChange: (value: string) => void
+  /** Group label to promote to the top; it's also pushed to the bottom of the rest. */
+  priorityGroup?: string
 }
 
 function IconFor({ ext }: { ext: string }) {
@@ -46,12 +48,20 @@ const GROUPS = [
   ['Archives', ['zip', '7z', 'tar']],
 ] as const
 
-export function FormatPicker({ options, value, onChange }: FormatPickerProps) {
+export function FormatPicker({ options, value, onChange, priorityGroup }: FormatPickerProps) {
   const byExt = new Map(options.map((item) => [item.ext, item]))
+  // Priority group leads (e.g. Images on the image tools page); Documents,
+  // being the least relevant group there, sinks to the bottom.
+  const orderedGroups = priorityGroup
+    ? [...GROUPS].sort((a, b) => {
+        const rank = (label: string) => (label === priorityGroup ? 0 : label === 'Documents' ? 2 : 1)
+        return rank(a[0]) - rank(b[0])
+      })
+    : GROUPS
 
   return (
     <div className="space-y-6">
-      {GROUPS.map(([label, exts]) => {
+      {orderedGroups.map(([label, exts]) => {
         const items = exts.map((ext) => byExt.get(ext)).filter(Boolean) as FormatOption[]
         if (!items.length) return null
         return (

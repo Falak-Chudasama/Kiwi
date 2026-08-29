@@ -169,16 +169,24 @@ def _module_available(name: str) -> bool:
 
 
 def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[str, bool]) -> tuple[bool, str | None]:
+    """Report whether convert_any(source_ext -> target_ext) will actually succeed.
+
+    This mirrors app.services.universal.convert_any branch-for-branch so the
+    UI never advertises a conversion that the engine can't really perform
+    (and never hides one that it can). Each check here corresponds to the
+    exact branch convert_any takes, and to the exact tool that branch calls.
+    """
     s = source_ext.lower()
     t = target_ext.lower()
 
     if s == t:
         return False, "Same format"
 
+    # Archives: repackaging only, mirrors _archive_convert.
     if s in ARCHIVE_INPUT_EXTENSIONS:
         if t in ARCHIVE_OUTPUT_EXTENSIONS:
-            if s == "rar":
-                return False, "RAR repackaging needs an extraction backend such as UnRAR or 7-Zip"
+            if s == "rar" and not tools["rarfile"]:
+                return False, "RAR repackaging needs the rarfile module plus an UnRAR/7-Zip backend"
             if s == "7z" and not tools["py7zr"]:
                 return False, "Requires py7zr to read 7Z archives"
             if t == "7z" and not tools["py7zr"]:
@@ -186,70 +194,115 @@ def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[s
             return True, None
         return False, "Archives are package containers, not document/media formats"
 
+    # PDF source: mirrors the "PDF paths" block in convert_any.
     if s == "pdf":
-        if t in {"docx", "pptx", "txt", "html", "md", "epub", "tex", "rst", "org"}:
-            if t in {"md", "epub", "tex", "rst", "org"} and not tools["pandoc"]:
-                return False, "Requires Pandoc"
+        if t == "txt" or t == "html":
             return True, None
-        if t in RENDER_IMAGE_TARGETS or t in {"doc", "odt", "rtf", "ppt", "odp"}:
-            return True, None if t in RENDER_IMAGE_TARGETS or tools["libreoffice"] else "Requires LibreOffice"
-        if t in {"xlsx", "xls", "ods", "csv"}:
+        if t == "docx" or t == "pptx":
             return True, None
+        if t in RENDER_IMAGE_TARGETS:
+            return True, None
+        if t in {"csv", "xlsx", "xls", "ods"}:
+            return True, None
+        if t in {"doc", "odt", "rtf"}:
+            # Goes through an intermediate docx, then LibreOffice for legacy formats.
+            if t == "doc" or t == "odt" or t == "rtf":
+                return tools["libreoffice"], "Requires LibreOffice"
+        if t in {"ppt", "odp"}:
+            return tools["libreoffice"], "Requires LibreOffice"
+        if t in {"md", "epub", "tex", "rst", "org"}:
+            return tools["pandoc"], "Requires Pandoc"
         return False, "No meaningful PDF representation for this target"
 
+    # Images: mirrors "if source_ext in IMAGE_EXTENSIONS".
     if s in IMAGE_EXTENSIONS:
-        if t in RENDER_IMAGE_TARGETS or t == "pdf":
+        if t in IMAGE_EXTENSIONS:
             return True, None
-        if t in {"docx", "doc", "odt", "rtf", "pptx", "ppt", "odp", "html", "htm"}:
-            if t in {"docx", "pptx", "html", "htm"}:
+        # Everything else routes through _image_to_document.
+        if t == "pdf":
+            return True, None
+        if t in {"docx", "doc", "odt", "rtf"}:
+            if t == "docx":
                 return True, None
-            return tools["libreoffice"], "Requires LibreOffice"
+            return tools["libreoffice"], "Requires LibreOffice to save as ." + t
+        if t in {"pptx", "ppt", "odp"}:
+            if t == "pptx":
+                return True, None
+            return tools["libreoffice"], "Requires LibreOffice to save as ." + t
         if t in {"txt", "md"}:
             return tools["tesseract"], "Requires Tesseract for OCR"
+        if t in {"html", "htm"}:
+            return True, None
         return False, "Image data has no reliable representation in this format"
 
+    # Archive repackaging when both ends are archive containers is handled
+    # above; a non-archive source never reaches an archive target here.
+
+    # Audio/video: mirrors the ffmpeg block.
     if s in AUDIO_EXTENSIONS or s in VIDEO_EXTENSIONS:
-        if t in AUDIO_EXTENSIONS or t in VIDEO_EXTENSIONS:
-            return tools["ffmpeg"], "Requires FFmpeg media transcoder"
         if t in MEDIA_IMAGE_TARGETS:
             return tools["ffmpeg"], "Requires FFmpeg frame/waveform rendering"
         if t == "pdf":
             return tools["ffmpeg"], "Requires FFmpeg waveform/frame rendering"
+        if t in AUDIO_EXTENSIONS or t in VIDEO_EXTENSIONS:
+            return tools["ffmpeg"], "Requires FFmpeg media transcoder"
         return False, "Media requires a semantic conversion, not a normal format transcode"
 
+    # Text documents: mirrors the TEXT_DOCUMENTS block, checked before the
+    # generic Pandoc bridge (source_ext in TEXT_DOCUMENTS short-circuits it).
     if s in TEXT_DOCUMENTS:
-        if t in RENDER_IMAGE_TARGETS or t == "pdf" or t in {"docx", "odt", "rtf", "epub", "pptx"}:
-            if t in RENDER_IMAGE_TARGETS:
-                return True, None
-            if t == "pdf":
-                return tools["pandoc"] or tools["libreoffice"], "Requires Pandoc or LibreOffice"
+        if t in RENDER_IMAGE_TARGETS:
+            return True, None
+        if t in {"csv", "xlsx", "xls", "ods"}:
+            return True, None
+        if t in PANDOC_OUTPUTS:
+            return tools["pandoc"], "Requires Pandoc"
+        if t == "pdf":
             return tools["pandoc"] or tools["libreoffice"], "Requires Pandoc or LibreOffice"
-        if t in {"doc", "ppt", "odp", "xlsx", "xls", "ods", "csv"}:
-            return tools["libreoffice"] or tools["pandoc"], "Requires LibreOffice (or Pandoc for supported text documents)"
+        if t in {"doc", "ppt", "odp", "xls"}:
+            return tools["libreoffice"], "Requires LibreOffice"
         return False, "Use a document, image, or spreadsheet representation for text data"
 
+    # Word-processor documents (doc/docx/odt/rtf): these are not in
+    # TEXT_DOCUMENTS, so convert_any falls through to the Pandoc bridge and,
+    # failing that, the LibreOffice catch-all.
     if s in WORD_DOCUMENTS:
-        if t in RENDER_IMAGE_TARGETS or t == "pdf":
+        if t in PANDOC_OUTPUTS and s in PANDOC_INPUTS:
+            return tools["pandoc"], "Requires Pandoc"
+        if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:
             return tools["libreoffice"], "Requires LibreOffice"
-        if t in {"txt", "md", "html", "htm", "doc", "docx", "odt", "rtf", "epub", "tex", "rst", "org", "pptx"}:
-            return tools["pandoc"] or tools["libreoffice"], "Requires Pandoc or LibreOffice"
+        if t in RENDER_IMAGE_TARGETS:
+            return tools["libreoffice"], "Requires LibreOffice"
+        return False, "No installed converter can perform this conversion"
 
+    # Spreadsheets: convert_any has no dedicated branch, so these fall
+    # through to the LibreOffice catch-all (or image rendering).
     if s in SPREADSHEETS:
-        if t in SPREADSHEETS | {"pdf", "html", "txt"}:
+        if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:
             return tools["libreoffice"], "Requires LibreOffice"
         if t in RENDER_IMAGE_TARGETS:
             return tools["libreoffice"], "Requires LibreOffice"
         return False, "Spreadsheet data has no reliable representation in this target"
 
+    # Presentations: same fallthrough as spreadsheets, but pptx can also use Pandoc.
     if s in PRESENTATIONS:
-        if t in PRESENTATIONS | {"pdf", "html", "txt"}:
-            return tools["libreoffice"] or tools["pandoc"], "Requires LibreOffice or Pandoc"
+        if s in PANDOC_INPUTS and t in PANDOC_OUTPUTS:
+            return tools["pandoc"], "Requires Pandoc"
+        if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:
+            return tools["libreoffice"], "Requires LibreOffice"
         if t in RENDER_IMAGE_TARGETS:
             return tools["libreoffice"], "Requires LibreOffice"
         return False, "Presentation content has no reliable representation in this target"
 
+    # Native Pandoc markup bridge for anything else Pandoc understands.
     if s in PANDOC_INPUTS and t in PANDOC_OUTPUTS:
         return tools["pandoc"], "Requires Pandoc"
+
+    # Final LibreOffice catch-all, matching convert_any's last resort.
+    if t in {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm", "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}:
+        return tools["libreoffice"], "Requires LibreOffice"
+    if t in RENDER_IMAGE_TARGETS:
+        return tools["libreoffice"], "Requires LibreOffice"
 
     return False, "No installed converter can perform this conversion"
 

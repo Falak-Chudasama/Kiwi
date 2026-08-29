@@ -187,8 +187,12 @@ export default function PdfToolsPage() {
 
   const start = async () => {
     if (!files.length) return
-    await run(ENDPOINTS[operation], buildFormData())
+    // Close the popup right away so the progress/result panel underneath is
+    // visible while the job runs — run() awaits the full job (upload +
+    // processing + polling), which can take a while, and previously kept
+    // the popup on screen for that entire duration.
     setPopupOpen(false)
+    await run(ENDPOINTS[operation], buildFormData())
   }
 
   const handlePrimary = () => {
