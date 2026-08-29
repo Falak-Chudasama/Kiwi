@@ -32,6 +32,9 @@ def on_startup() -> None:
     register_all_handlers()
     task_queue.start()
 
+@app.get("/")
+def hello_by_kiwi():
+    return { "message": "Hello from Kiwi 😄🥝" }
 
 @app.get("/api/health")
 def health_check():
