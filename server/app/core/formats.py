@@ -175,6 +175,7 @@ def tool_state() -> dict[str, bool]:
         "pymupdf4llm": _module_available("pymupdf4llm"),
         "markitdown": _module_available("markitdown"),
         "oxipng": _module_available("oxipng"),
+        "docxcompose": _module_available("docxcompose"),
     }
 
 

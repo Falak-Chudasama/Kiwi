@@ -171,22 +171,49 @@ def _office_to_images(input_path: Path, target_ext: str, out_dir: Path) -> list[
         return rendered
 
 
+def _extract_pdf_tables(input_path: Path) -> list[list[list[str]]]:
+    """Detect and extract every table on every page, keeping each table as a
+    separate row-group (rather than flattening every table on a page into
+    one blob, which silently merges unrelated tables with mismatched column
+    counts). Tries the default ruled-line strategy first (accurate when the
+    PDF actually draws grid lines); pages where that finds nothing fall back
+    to a text-alignment strategy, which catches the common borderless
+    "columns aligned by whitespace" table layout that line-detection misses
+    entirely.
+    """
+    import pdfplumber
+
+    tables: list[list[list[str]]] = []
+    with pdfplumber.open(input_path) as pdf:
+        for page in pdf.pages:
+            found = page.find_tables()
+            if not found:
+                found = page.find_tables(table_settings={
+                    "vertical_strategy": "text",
+                    "horizontal_strategy": "text",
+                    "intersection_tolerance": 5,
+                })
+            for table in found:
+                extracted = table.extract()
+                cleaned_rows = [
+                    [str(cell or "").strip() for cell in row]
+                    for row in extracted
+                    if any(str(cell or "").strip() for cell in row)
+                ]
+                if cleaned_rows:
+                    tables.append(cleaned_rows)
+    return tables
+
+
 def _pdf_tables(input_path: Path, target_ext: str, out_dir: Path) -> Path:
     try:
-        import pdfplumber
+        import pdfplumber  # noqa: F401
     except ImportError as exc:
         raise RuntimeError("PDF table extraction requires pdfplumber. Reinstall Kiwi dependencies.") from exc
 
-    rows: list[list[str]] = []
-    with pdfplumber.open(input_path) as pdf:
-        for page in pdf.pages:
-            for table in page.extract_tables() or []:
-                for row in table:
-                    cleaned = [str(cell or "").strip() for cell in row]
-                    if any(cleaned):
-                        rows.append(cleaned)
+    tables = _extract_pdf_tables(input_path)
 
-    if not rows:
+    if not tables:
         raise RuntimeError(
             "No tables could be extracted from this PDF. A general PDF does not necessarily contain spreadsheet-shaped data."
         )
@@ -195,7 +222,10 @@ def _pdf_tables(input_path: Path, target_ext: str, out_dir: Path) -> Path:
         output = out_dir / f"{input_path.stem}.csv"
         with output.open("w", newline="", encoding="utf-8-sig") as fp:
             writer = csv.writer(fp)
-            writer.writerows(rows)
+            for i, table in enumerate(tables):
+                if i > 0:
+                    writer.writerow([])  # blank row separates distinct tables
+                writer.writerows(table)
         return output
 
     if target_ext in {"xlsx", "xls", "ods"}:
@@ -205,14 +235,21 @@ def _pdf_tables(input_path: Path, target_ext: str, out_dir: Path) -> Path:
             output = out_dir / f"{input_path.stem}.xlsx"
             wb = Workbook()
             ws = wb.active
-            for row in rows:
-                ws.append(row)
+            for i, table in enumerate(tables):
+                if i > 0:
+                    ws.append([])
+                for row in table:
+                    ws.append(row)
             wb.save(output)
             return output
 
         csv_path = out_dir / f"{input_path.stem}.csv"
         with csv_path.open("w", newline="", encoding="utf-8-sig") as fp:
-            csv.writer(fp).writerows(rows)
+            writer = csv.writer(fp)
+            for i, table in enumerate(tables):
+                if i > 0:
+                    writer.writerow([])
+                writer.writerows(table)
         return _office_convert(csv_path, target_ext, out_dir)
 
     raise ValueError(f"Unsupported table output .{target_ext}")

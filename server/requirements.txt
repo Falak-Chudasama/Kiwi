@@ -3,7 +3,7 @@ uvicorn==0.30.6
 python-multipart==0.0.9
 pydantic-settings==2.5.2
 pikepdf==9.3.0
-PyMuPDF==1.24.10
+PyMuPDF==1.26.7
 Pillow==10.4.0
 pillow-heif==0.18.0
 cairosvg==2.7.1
@@ -14,7 +14,8 @@ python-docx==1.1.2
 python-pptx==1.0.2
 pdfplumber==0.11.4
 openpyxl==3.1.5
-pdf2docx==0.5.8
-pymupdf4llm==0.0.17
+pdf2docx==0.5.13
+pymupdf4llm==0.0.27
 markitdown[docx,pptx,xlsx,xls]==0.1.7
 pyoxipng==9.1.0
+docxcompose==2.2.0

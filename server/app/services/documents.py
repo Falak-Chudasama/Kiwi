@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import html
-import io
 import re
 from pathlib import Path
 
@@ -177,61 +176,40 @@ def _pdf_to_text(input_path: Path, output_path: Path) -> Path:
 
     import fitz
 
+    from app.services.pdf_analysis import analyze_pdf
+    from app.services.pdf_ocr import ocr_available, ocr_page
+
+    analysis = analyze_pdf(input_path)
+    ocr_pages = set(analysis.ocr_page_indices) if (analysis.requires_ocr and ocr_available()) else set()
+
     document = fitz.open(input_path)
     try:
-        text = "\n\n".join(page.get_text("text") for page in document)
-        output_path.write_text(text, encoding="utf-8")
+        parts = []
+        for i, page in enumerate(document):
+            if i in ocr_pages:
+                try:
+                    parts.append(ocr_page(page).text)
+                    continue
+                except Exception:
+                    pass
+            parts.append(page.get_text("text"))
+        output_path.write_text("\n\n".join(parts), encoding="utf-8")
     finally:
         document.close()
     return output_path
 
 
 def _pdf_to_html(input_path: Path, output_path: Path) -> Path:
-    import fitz
+    """Render a PDF to fixed-layout HTML.
 
-    document = fitz.open(input_path)
-    try:
-        sections = []
-        for index, page in enumerate(document, start=1):
-            page_text = html.escape(page.get_text("text"))
-            page_text = page_text.replace("\n", "<br>\n")
-            sections.append(
-                f"<section><h2>Page {index}</h2><p>{page_text}</p></section>"
-            )
+    Delegates to app.services.pdf_render, which places every text span and
+    image at its real page coordinates (absolute positioning per page)
+    instead of flattening the document into a single scrolling text dump.
+    Falls back to OCR per-page for scanned content. See pdf_render.py.
+    """
+    from app.services.pdf_render import pdf_to_html as _render_pdf_to_html
 
-        document_html = (
-            "<!doctype html><html><head><meta charset='utf-8'>"
-            "<title>Converted PDF</title></head><body>"
-            + "".join(sections)
-            + "</body></html>"
-        )
-        output_path.write_text(document_html, encoding="utf-8")
-    finally:
-        document.close()
-    return output_path
-
-
-def _pdf_block_text(block: dict) -> str:
-    lines = []
-    for line in block.get("lines", []):
-        spans = [span.get("text", "") for span in line.get("spans", [])]
-        text = "".join(spans).strip()
-        if text:
-            lines.append(text)
-    return "\n".join(lines).strip()
-
-
-def _block_font_size(block: dict) -> float:
-    sizes: list[float] = []
-    for line in block.get("lines", []):
-        for span in line.get("spans", []):
-            try:
-                size = float(span.get("size", 11))
-            except (TypeError, ValueError):
-                size = 11
-            if size > 0:
-                sizes.append(size)
-    return max(8.0, min(30.0, max(sizes, default=11.0)))
+    return _render_pdf_to_html(input_path, output_path)
 
 
 def _pdf_to_docx(input_path: Path, output_path: Path) -> Path:
@@ -242,17 +220,187 @@ def _pdf_to_docx(input_path: Path, output_path: Path) -> Path:
     the PDF's layout structure -- this is a purpose-built converter rather
     than a hand-rolled text-block dump, and it is what produces documents
     that actually look like the source PDF when opened in Word.
+
+    Scanned pages have no text for pdf2docx to find (it reads the PDF's
+    text layer, it doesn't run OCR itself), so before handing off, any page
+    that `pdf_analysis` flags as needing OCR gets an invisible OCR text
+    layer burned in first (fitz render_mode=3, "hidden text").
+
+    pdf2docx has a dedicated `ocr` setting for exactly this: ocr=0 (default)
+    ignores hidden text as noise, ocr=2 treats the *entire* document as
+    OCR-sourced and extracts only the hidden text (dropping images). Since
+    that's a single document-wide flag, a fully-scanned PDF can be converted
+    in one ocr=2 pass, but a *mixed* PDF (some native pages, some scanned)
+    can't -- one pass would either drop the scanned pages' text (ocr=0) or
+    drop every native page's images (ocr=2). For that case this splits the
+    PDF into single-document-mode runs per contiguous page group and merges
+    the resulting docx files, so each page gets the extraction mode that
+    actually matches its content.
     """
+    from app.services.pdf_analysis import analyze_pdf
+    from app.services.pdf_ocr import ocr_available
+
     from pdf2docx import Converter
 
-    converter = Converter(str(input_path))
+    analysis = analyze_pdf(input_path)
+    ocr_pages = set(analysis.ocr_page_indices) if (analysis.requires_ocr and ocr_available()) else set()
+
+    if not ocr_pages:
+        converter = Converter(str(input_path))
+        try:
+            converter.convert(str(output_path))
+        finally:
+            converter.close()
+        if not output_path.exists():
+            raise RuntimeError("pdf2docx did not produce the requested output file.")
+        return output_path
+
+    if len(ocr_pages) == analysis.page_count:
+        # Whole document is scanned: one ocr=2 pass over the whole thing.
+        ocr_path = output_path.with_suffix(".ocr_source.pdf")
+        try:
+            _burn_in_ocr_text_layer(input_path, ocr_path, sorted(ocr_pages))
+            converter = Converter(str(ocr_path))
+            try:
+                converter.convert(str(output_path), ocr=2)
+            finally:
+                converter.close()
+        finally:
+            ocr_path.unlink(missing_ok=True)
+        if not output_path.exists():
+            raise RuntimeError("pdf2docx did not produce the requested output file.")
+        return output_path
+
+    # Mixed document: convert each contiguous run of same-mode pages
+    # separately (native pages with ocr=0/default, scanned pages burned-in
+    # with ocr=2), then splice the resulting single-page-range docx files
+    # together in original page order.
+    import fitz
+
+    from docxcompose.composer import Composer
+    from docx import Document as DocxDocument
+
+    groups: list[tuple[bool, list[int]]] = []  # (is_ocr, [page_indices])
+    for i in range(analysis.page_count):
+        is_ocr = i in ocr_pages
+        if groups and groups[-1][0] == is_ocr:
+            groups[-1][1].append(i)
+        else:
+            groups.append((is_ocr, [i]))
+
+    part_paths: list[Path] = []
+    src_doc = fitz.open(input_path)
     try:
-        converter.convert(str(output_path))
+        for gi, (is_ocr, indices) in enumerate(groups):
+            part_pdf = output_path.with_suffix(f".part{gi}.pdf")
+            part_docx = output_path.with_suffix(f".part{gi}.docx")
+            sub = fitz.open()
+            try:
+                sub.insert_pdf(src_doc, from_page=indices[0], to_page=indices[-1])
+                if is_ocr:
+                    _burn_in_ocr_text_layer_inplace(sub, list(range(len(indices))))
+                sub.save(part_pdf)
+            finally:
+                sub.close()
+
+            converter = Converter(str(part_pdf))
+            try:
+                if is_ocr:
+                    converter.convert(str(part_docx), ocr=2)
+                else:
+                    converter.convert(str(part_docx))
+            finally:
+                converter.close()
+            part_paths.append(part_docx)
+            part_pdf.unlink(missing_ok=True)
     finally:
-        converter.close()
+        src_doc.close()
+
+    try:
+        master = DocxDocument(str(part_paths[0]))
+        composer = Composer(master)
+        for extra in part_paths[1:]:
+            composer.append(DocxDocument(str(extra)))
+        composer.save(str(output_path))
+    finally:
+        for p in part_paths:
+            p.unlink(missing_ok=True)
 
     if not output_path.exists():
         raise RuntimeError("pdf2docx did not produce the requested output file.")
+    return output_path
+
+
+def _burn_in_ocr_text_layer_inplace(doc, page_indices: list[int]) -> None:
+    """Same as `_burn_in_ocr_text_layer` but mutates an already-open fitz
+    Document in place rather than reading/writing a file, for use when the
+    document is a short-lived in-memory page-range extract.
+    """
+    from app.services.pdf_ocr import ocr_lines
+
+    for idx in page_indices:
+        if idx >= len(doc):
+            continue
+        page = doc[idx]
+        try:
+            lines = ocr_lines(page)
+        except Exception:
+            continue
+        for line in lines:
+            for word in line:
+                if not word.text.strip():
+                    continue
+                height = max(1.0, word.y1 - word.y0)
+                try:
+                    page.insert_text(
+                        (word.x0, word.y1 - height * 0.15),
+                        word.text,
+                        fontsize=height * 0.9,
+                        render_mode=3,
+                    )
+                except Exception:
+                    continue
+
+
+def _burn_in_ocr_text_layer(input_path: Path, output_path: Path, page_indices: list[int]) -> Path:
+    """Write a copy of the PDF where the given pages have an invisible OCR
+    text layer added over the existing page content, using PyMuPDF's
+    invisible-text render mode. Downstream tools that read the PDF's text
+    layer (pdf2docx, pymupdf4llm, pdfplumber) then see real, positioned text
+    on pages that previously had none, without altering how the page looks
+    when viewed or printed.
+    """
+    import fitz
+
+    from app.services.pdf_ocr import ocr_lines
+
+    doc = fitz.open(input_path)
+    try:
+        for idx in page_indices:
+            if idx >= len(doc):
+                continue
+            page = doc[idx]
+            try:
+                lines = ocr_lines(page)
+            except Exception:
+                continue
+            for line in lines:
+                for word in line:
+                    if not word.text.strip():
+                        continue
+                    height = max(1.0, word.y1 - word.y0)
+                    try:
+                        page.insert_text(
+                            (word.x0, word.y1 - height * 0.15),
+                            word.text,
+                            fontsize=height * 0.9,
+                            render_mode=3,  # invisible -- text is selectable/extractable but not painted
+                        )
+                    except Exception:
+                        continue
+        doc.save(output_path)
+    finally:
+        doc.close()
     return output_path
 
 
@@ -262,10 +410,32 @@ def _pdf_to_markdown(input_path: Path, output_path: Path) -> Path:
     Unlike a raw text dump, this detects headings (by font size), bold and
     italic runs, ordered/unordered lists, and tables, and emits them as
     proper GitHub-flavored Markdown in reading order.
+
+    Scanned pages have no text for pymupdf4llm to structure, so pages that
+    `pdf_analysis` flags as needing OCR get an invisible OCR text layer
+    burned in first (see `_burn_in_ocr_text_layer`), the same way as for
+    PDF -> DOCX. pymupdf4llm then has real text to work with on those pages
+    too, instead of emitting a blank section.
     """
     import pymupdf4llm
 
-    markdown_text = pymupdf4llm.to_markdown(str(input_path))
+    from app.services.pdf_analysis import analyze_pdf
+    from app.services.pdf_ocr import ocr_available
+
+    source_for_conversion = input_path
+    analysis = analyze_pdf(input_path)
+    if analysis.requires_ocr and ocr_available():
+        ocr_path = output_path.with_suffix(".ocr_source.pdf")
+        try:
+            source_for_conversion = _burn_in_ocr_text_layer(input_path, ocr_path, analysis.ocr_page_indices)
+        except Exception:
+            source_for_conversion = input_path
+
+    try:
+        markdown_text = pymupdf4llm.to_markdown(str(source_for_conversion))
+    finally:
+        if source_for_conversion != input_path:
+            source_for_conversion.unlink(missing_ok=True)
 
     amounts = _glyph_currency_amounts(input_path)
     if amounts:
@@ -285,108 +455,15 @@ def _pdf_to_markdown(input_path: Path, output_path: Path) -> Path:
 def _pdf_to_pptx(input_path: Path, output_path: Path) -> Path:
     """Create an editable PPTX approximation of a PDF.
 
-    Each PDF page becomes a slide. Text becomes native PowerPoint text boxes
-    and embedded raster images become native picture objects. Complex vector
-    artwork may not map 1:1, which is inherent in PDF -> PowerPoint conversion.
+    Delegates to app.services.pdf_render, which resolves real font
+    family/weight/style per run (instead of forcing Arial), OCRs pages that
+    have no native text layer, and falls back to a high-resolution
+    full-page image only for pages dominated by vector art that can't be
+    reconstructed as editable shapes. See pdf_render.py.
     """
-    import fitz
-    from pptx import Presentation
-    from pptx.enum.text import MSO_AUTO_SIZE
-    from pptx.util import Inches, Pt
+    from app.services.pdf_render import pdf_to_pptx as _render_pdf_to_pptx
 
-    pdf = fitz.open(input_path)
-    prs = Presentation()
-
-    # Remove the default starter slide so every PDF page maps exactly to one slide.
-    while len(prs.slides):
-        r_id = prs.slides._sldIdLst[0].rId
-        prs.part.drop_rel(r_id)
-        del prs.slides._sldIdLst[0]
-
-    try:
-        if len(pdf) == 0:
-            raise ValueError("PDF contains no pages.")
-
-        first_page = pdf[0]
-        first_rect = first_page.rect
-        prs.slide_width = Inches(10)
-        prs.slide_height = Inches(10 * first_rect.height / first_rect.width)
-
-        for page in pdf:
-            slide_width_pt = float(prs.slide_width) / 12700.0
-            slide_height_pt = float(prs.slide_height) / 12700.0
-            scale_x = slide_width_pt / page.rect.width if page.rect.width else 1.0
-            scale_y = slide_height_pt / page.rect.height if page.rect.height else 1.0
-
-            slide = prs.slides.add_slide(prs.slide_layouts[6])
-            page_dict = page.get_text("dict")
-            blocks = page_dict.get("blocks", [])
-            blocks.sort(key=lambda block: (block.get("bbox", [0, 0, 0, 0])[1], block.get("bbox", [0, 0, 0, 0])[0]))
-
-            for block in blocks:
-                bbox = block.get("bbox") or [0, 0, 0, 0]
-                x0, y0, x1, y1 = map(float, bbox)
-                left = Inches(max(0.0, x0 * scale_x / 72.0))
-                top = Inches(max(0.0, y0 * scale_y / 72.0))
-                width = Inches(max(0.05, (x1 - x0) * scale_x / 72.0))
-                height = Inches(max(0.05, (y1 - y0) * scale_y / 72.0))
-
-                if block.get("type") == 1 and block.get("image"):
-                    try:
-                        slide.shapes.add_picture(
-                            io.BytesIO(block["image"]),
-                            left,
-                            top,
-                            width=width,
-                            height=height,
-                        )
-                    except Exception:
-                        continue
-                    continue
-
-                if block.get("type") != 0:
-                    continue
-
-                text = _pdf_block_text(block)
-                if not text:
-                    continue
-
-                shape = slide.shapes.add_textbox(
-                    left,
-                    top,
-                    width,
-                    height,
-                )
-
-                frame = shape.text_frame
-                frame.clear()
-                frame.word_wrap = True
-                frame.auto_size = MSO_AUTO_SIZE.NONE
-
-                paragraph = frame.paragraphs[0]
-                paragraph.text = text
-
-                font = paragraph.runs[0].font
-                font.name = "Arial"
-                font.size = Pt(max(6, min(32, _block_font_size(block))))
-
-            # If a page had no extractable objects, preserve its visual content
-            # as a full-page raster image rather than returning an empty slide.
-            if not slide.shapes:
-                pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
-                slide.shapes.add_picture(
-                    io.BytesIO(pix.tobytes("png")),
-                    0,
-                    0,
-                    width=prs.slide_width,
-                    height=prs.slide_height,
-                )
-
-        prs.save(output_path)
-    finally:
-        pdf.close()
-
-    return output_path
+    return _render_pdf_to_pptx(input_path, output_path)
 
 
 def convert_to_markdown_with_markitdown(input_path: Path, output_path: Path) -> Path:
