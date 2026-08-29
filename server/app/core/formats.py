@@ -142,10 +142,6 @@ def tool_state() -> dict[str, bool]:
             "pandoc",
             [r"C:\Program Files\Pandoc\pandoc.exe"],
         ),
-        "imagemagick": _command_available(
-            "magick",
-            [r"C:\Program Files\ImageMagick-*\magick.exe"],
-        ),
         "ffmpeg": _command_available(
             "ffmpeg",
             [
@@ -157,6 +153,14 @@ def tool_state() -> dict[str, bool]:
             "tesseract",
             [r"C:\Program Files\Tesseract-OCR\tesseract.exe"],
         ),
+        "ghostscript": _command_available(
+            "gswin64c",
+            [
+                r"C:\Program Files\gs\*\bin\gswin64c.exe",
+                r"C:\Program Files (x86)\gs\*\bin\gswin32c.exe",
+                "gs",
+            ],
+        ),
         "py7zr": _module_available("py7zr"),
         "rarfile": _module_available("rarfile"),
     }
@@ -166,6 +170,91 @@ def _module_available(name: str) -> bool:
     import importlib.util
 
     return importlib.util.find_spec(name) is not None
+
+
+# Metadata for the engine-status panel: what each engine unlocks and how to
+# install it on each OS. Ordered by how much conversion coverage each one
+# unlocks so the status panel can show the highest-impact gaps first.
+ENGINE_INFO: list[dict[str, Any]] = [
+    {
+        "key": "libreoffice",
+        "name": "LibreOffice",
+        "unlocks": "Word/Excel/PowerPoint/OpenDocument conversion, legacy formats, PDF export",
+        "install": {
+            "windows": "winget install TheDocumentFoundation.LibreOffice",
+            "macos": "brew install --cask libreoffice",
+            "linux": "sudo apt install libreoffice",
+        },
+    },
+    {
+        "key": "pandoc",
+        "name": "Pandoc",
+        "unlocks": "Markdown, HTML, EPUB, LaTeX, RST, Org, and other markup/document conversion",
+        "install": {
+            "windows": "winget install --id JohnMacFarlane.Pandoc",
+            "macos": "brew install pandoc",
+            "linux": "sudo apt install pandoc",
+        },
+    },
+    {
+        "key": "ffmpeg",
+        "name": "FFmpeg",
+        "unlocks": "Audio and video transcoding, frame/waveform image export",
+        "install": {
+            "windows": "winget install Gyan.FFmpeg",
+            "macos": "brew install ffmpeg",
+            "linux": "sudo apt install ffmpeg",
+        },
+    },
+    {
+        "key": "ghostscript",
+        "name": "Ghostscript",
+        "unlocks": "High-quality PDF compression (falls back to slower page rasterization without it)",
+        "install": {
+            "windows": "winget install ArtifexSoftware.GhostScript",
+            "macos": "brew install ghostscript",
+            "linux": "sudo apt install ghostscript",
+        },
+    },
+    {
+        "key": "tesseract",
+        "name": "Tesseract OCR",
+        "unlocks": "Text extraction from scanned images and image-to-text/markdown",
+        "install": {
+            "windows": "winget install UB-Mannheim.TesseractOCR",
+            "macos": "brew install tesseract",
+            "linux": "sudo apt install tesseract-ocr",
+        },
+    },
+    {
+        "key": "py7zr",
+        "name": "py7zr (Python package)",
+        "unlocks": "Reading and writing .7z archives",
+        "install": {
+            "windows": "pip install py7zr",
+            "macos": "pip install py7zr",
+            "linux": "pip install py7zr",
+        },
+    },
+    {
+        "key": "rarfile",
+        "name": "rarfile (Python package)",
+        "unlocks": "Extracting .rar archives (also needs unrar or 7-Zip on PATH)",
+        "install": {
+            "windows": "pip install rarfile  (and: winget install RARLab.WinRAR)",
+            "macos": "pip install rarfile  (and: brew install rar)",
+            "linux": "pip install rarfile  (and: sudo apt install unrar)",
+        },
+    },
+]
+
+
+def engine_status() -> list[dict[str, Any]]:
+    tools = tool_state()
+    return [
+        {**info, "installed": tools.get(info["key"], False)}
+        for info in ENGINE_INFO
+    ]
 
 
 def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[str, bool]) -> tuple[bool, str | None]:

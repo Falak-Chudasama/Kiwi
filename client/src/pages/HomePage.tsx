@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowRightLeft, ArchiveIcon, CompressIcon, ImageStackIcon, PdfIcon } from '../components/ui/icons'
+import { ArrowRightLeft, ArchiveIcon, CompressIcon, ImageStackIcon, PdfIcon, ServerIcon } from '../components/ui/icons'
 import { FeatureCard } from '../components/features/FeatureCard'
 
 const FEATURES = [
@@ -8,6 +8,7 @@ const FEATURES = [
   { to: '/pdf', title: 'PDF tools', description: 'Merge, split, rotate, protect, watermark, and OCR PDFs.', icon: <PdfIcon className="h-6 w-6" />, tone: 'red' as const },
   { to: '/compress', title: 'Compression', description: 'Shrink supported files and keep the smaller result.', icon: <CompressIcon className="h-6 w-6" />, tone: 'violet' as const },
   { to: '/archives', title: 'Archives', description: 'Create and extract ZIP, 7Z, TAR, and supported RAR files.', icon: <ArchiveIcon className="h-6 w-6" />, tone: 'orange' as const },
+  { to: '/engines', title: 'Conversion engines', description: 'See which local tools are installed and what to install for full coverage.', icon: <ServerIcon className="h-6 w-6" />, tone: 'green' as const },
 ]
 
 export default function HomePage() {

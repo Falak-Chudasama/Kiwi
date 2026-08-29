@@ -33,6 +33,10 @@ export {
   Type as WatermarkIcon,
   Zap as CompressIcon,
   FileCog as DocumentIcon,
+  Server as ServerIcon,
+  Copy as CopyIcon,
+  CircleCheck as CircleCheckIcon,
+  CircleDashed as CircleDashedIcon,
 } from 'lucide-react'
 
 export { LoaderCircle as SpinnerIcon, CircleAlert as AlertCircleIcon } from 'lucide-react'

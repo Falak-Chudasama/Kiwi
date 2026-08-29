@@ -6,6 +6,7 @@ const NAV = [
   { to: '/images', label: 'Images' },
   { to: '/pdf', label: 'PDF' },
   { to: '/archives', label: 'Archives' },
+  { to: '/engines', label: 'Engines' },
 ]
 
 export function Header() {

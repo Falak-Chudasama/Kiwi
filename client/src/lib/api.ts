@@ -63,3 +63,26 @@ export async function fetchTargets(kind: 'documents' | 'images', filename: strin
   const data = await parseOrThrow(res)
   return data.targets
 }
+
+export interface EngineInstall {
+  windows: string
+  macos: string
+  linux: string
+}
+
+export interface EngineStatus {
+  key: string
+  name: string
+  unlocks: string
+  install: EngineInstall
+  installed: boolean
+}
+
+export interface SystemStatus {
+  engines: EngineStatus[]
+  missing_count: number
+}
+
+export async function fetchSystemStatus(): Promise<SystemStatus> {
+  return parseOrThrow(await fetch('/api/system/status'))
+}

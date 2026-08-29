@@ -7,6 +7,7 @@ import ImageConvertPage from './pages/ImageConvertPage'
 import PdfToolsPage from './pages/PdfToolsPage'
 import CompressPage from './pages/CompressPage'
 import ArchivesPage from './pages/ArchivesPage'
+import EnginesPage from './pages/EnginesPage'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
             <Route path="/pdf" element={<PdfToolsPage />} />
             <Route path="/compress" element={<CompressPage />} />
             <Route path="/archives" element={<ArchivesPage />} />
+            <Route path="/engines" element={<EnginesPage />} />
           </Routes>
         </div>
       </BrowserRouter>
