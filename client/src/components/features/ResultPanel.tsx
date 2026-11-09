@@ -42,31 +42,31 @@ export function ResultPanel({ jobId, results, originalSize, onReset }: ResultPan
   }
 
   return (
-    <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-soft animate-scale-in">
-      <div className="flex items-center justify-between border-b border-stone-100 pb-4">
-        <div className="flex items-center gap-2.5 text-base font-bold text-emerald-600">
+    <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft animate-scale-in">
+      <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-4">
+        <div className="flex items-center gap-2.5 text-base font-bold text-emerald-600 dark:text-kiwi-lime">
           <CheckCircleIcon className="h-5 w-5" />
           <span>Processing Completed</span>
         </div>
         <button
           type="button"
           onClick={onReset}
-          className="text-sm font-semibold text-stone-500 hover:text-stone-900 transition"
+          className="text-sm font-semibold text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 transition"
         >
           Convert another file
         </button>
       </div>
 
       {outputSize !== undefined && (
-        <div className="mt-4 rounded-xl bg-stone-50 p-4 text-sm">
-          <div className="flex items-center justify-between text-stone-600 font-medium">
+        <div className="mt-4 rounded-xl bg-stone-50 dark:bg-[#20211C] p-4 text-sm">
+          <div className="flex items-center justify-between text-stone-600 dark:text-stone-300 font-medium">
             <span>Result Size</span>
-            <span className="font-bold text-stone-900 text-base">{formatBytes(outputSize)}</span>
+            <span className="font-bold text-stone-900 dark:text-stone-100 text-base">{formatBytes(outputSize)}</span>
           </div>
           {savedPercent !== undefined && Math.abs(savedPercent) > 0.1 && (
             <div
               className={`mt-2 flex items-center justify-between font-bold ${
-                savedPercent > 0 ? 'text-emerald-600' : 'text-stone-500'
+                savedPercent > 0 ? 'text-emerald-600 dark:text-kiwi-lime' : 'text-stone-500 dark:text-stone-400'
               }`}
             >
               <span>{savedPercent > 0 ? 'Saved' : 'Difference'}</span>
@@ -86,13 +86,13 @@ export function ResultPanel({ jobId, results, originalSize, onReset }: ResultPan
             key={`${result.name}-${index}`}
             href={downloadUrl(jobId, index)}
             download={result.name}
-            className="focus-ring flex items-center justify-between gap-4 rounded-2xl border border-stone-200/90 bg-white px-5 py-4 transition hover:border-kiwi-flesh/50 hover:bg-stone-50 shadow-2xs"
+            className="focus-ring flex items-center justify-between gap-4 rounded-2xl border border-stone-200/90 dark:border-white/[0.08] bg-white dark:bg-[#1C1D18] px-5 py-4 transition hover:border-kiwi-flesh/50 dark:hover:border-kiwi-lime/50 hover:bg-stone-50 dark:hover:bg-[#22231E] shadow-2xs"
           >
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm sm:text-base font-bold text-stone-900">{result.name}</p>
-              <p className="text-xs sm:text-sm text-stone-500">{formatBytes(result.size)}</p>
+              <p className="truncate text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100">{result.name}</p>
+              <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400">{formatBytes(result.size)}</p>
             </div>
-            <div className="flex items-center gap-2 rounded-xl bg-kiwi-flesh/10 px-4 py-2 text-sm font-bold text-kiwi-flesh-700">
+            <div className="flex items-center gap-2 rounded-xl bg-kiwi-flesh/10 dark:bg-kiwi-lime/10 px-4 py-2 text-sm font-bold text-kiwi-flesh-700 dark:text-kiwi-lime">
               <DownloadIcon className="h-4 w-4" />
               <span>Download</span>
             </div>
@@ -104,7 +104,7 @@ export function ResultPanel({ jobId, results, originalSize, onReset }: ResultPan
             type="button"
             onClick={handleDownloadAll}
             disabled={downloadingAll}
-            className="focus-ring mt-4 flex w-full items-center justify-center gap-2.5 rounded-2xl bg-stone-900 py-4 text-sm sm:text-base font-bold text-white transition hover:bg-black disabled:opacity-50 shadow-soft"
+            className="focus-ring mt-4 flex w-full items-center justify-center gap-2.5 rounded-2xl bg-stone-900 dark:bg-stone-100 py-4 text-sm sm:text-base font-bold text-white dark:text-stone-900 transition hover:bg-black dark:hover:bg-white disabled:opacity-50 shadow-soft"
           >
             <PackageOpenIcon className="h-5 w-5" />
             <span>{downloadingAll ? 'Triggering downloads…' : `Download all ${results.length} files`}</span>

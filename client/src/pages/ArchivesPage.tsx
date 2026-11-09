@@ -70,14 +70,14 @@ export default function ArchivesPage() {
       icon={<Archive className="h-4 w-4" />}
     >
       {/* Mode Switcher */}
-      <div className="flex gap-2 rounded-2xl border border-black/[0.06] bg-white p-2 shadow-soft">
+      <div className="flex gap-2 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-2 shadow-soft">
         <button
           type="button"
           onClick={() => switchMode('create')}
           className={`flex-1 flex items-center justify-center gap-2.5 rounded-xl py-3 text-sm font-bold transition ${
             mode === 'create'
-              ? 'bg-stone-900 text-white shadow-xs'
-              : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+              ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+              : 'text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-white'
           }`}
         >
           <FolderArchive className="h-4 w-4" />
@@ -88,8 +88,8 @@ export default function ArchivesPage() {
           onClick={() => switchMode('extract')}
           className={`flex-1 flex items-center justify-center gap-2.5 rounded-xl py-3 text-sm font-bold transition ${
             mode === 'extract'
-              ? 'bg-stone-900 text-white shadow-xs'
-              : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+              ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+              : 'text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-white'
           }`}
         >
           <PackageOpen className="h-4 w-4" />
@@ -113,7 +113,7 @@ export default function ArchivesPage() {
           {/* Selected File(s) */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-bold uppercase tracking-wider text-stone-500">
+              <span className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 {mode === 'create' ? `Files to Bundle (${files.length})` : 'Target Archive'}
               </span>
               {state === 'idle' && (
@@ -123,7 +123,7 @@ export default function ArchivesPage() {
                     reset()
                     setFiles([])
                   }}
-                  className="text-sm font-semibold text-stone-400 hover:text-stone-700 transition"
+                  className="text-sm font-semibold text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 transition"
                 >
                   Clear all
                 </button>
@@ -141,8 +141,8 @@ export default function ArchivesPage() {
 
           {/* Creation Options */}
           {mode === 'create' && state === 'idle' && (
-            <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-soft space-y-5">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500">
+            <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft space-y-5">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 Archive Format & Naming
               </h2>
 
@@ -154,8 +154,8 @@ export default function ArchivesPage() {
                     onClick={() => setArchiveFormat(fmt)}
                     className={`flex-1 rounded-xl border py-3 text-sm font-extrabold uppercase transition ${
                       archiveFormat === fmt
-                        ? 'border-kiwi-flesh bg-kiwi-flesh text-white shadow-soft ring-2 ring-kiwi-flesh/20'
-                        : 'border-stone-200/90 bg-white text-stone-700 hover:bg-stone-50 shadow-2xs'
+                        ? 'border-kiwi-flesh bg-kiwi-flesh text-white shadow-soft ring-2 ring-kiwi-flesh/20 dark:border-kiwi-lime dark:bg-kiwi-flesh dark:ring-kiwi-lime/30'
+                        : 'border-stone-200/90 dark:border-white/[0.08] bg-white dark:bg-[#1C1D18] text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-[#22231E] shadow-2xs'
                     }`}
                   >
                     .{fmt}
@@ -164,7 +164,7 @@ export default function ArchivesPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-stone-700 mb-1.5">
+                <label className="block text-sm font-bold text-stone-700 dark:text-stone-300 mb-1.5">
                   Archive Bundle Name
                 </label>
                 <TextField
@@ -213,11 +213,11 @@ export default function ArchivesPage() {
 
           {/* Error Message */}
           {state === 'failed' && (
-            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4 text-xs text-rose-700 animate-slide-up">
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 dark:border-rose-900/50 bg-rose-50/80 dark:bg-rose-950/40 p-4 text-xs text-rose-700 dark:text-rose-300 animate-slide-up">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="font-semibold">Archive operation failed</p>
-                <p className="mt-1 text-rose-600">{errorMessage}</p>
+                <p className="mt-1 text-rose-600 dark:text-rose-400">{errorMessage}</p>
               </div>
             </div>
           )}

@@ -71,19 +71,19 @@ export function Dropzone({ onFiles, accept, multiple = false, hint, preview }: D
         }}
         className={`focus-ring flex cursor-pointer flex-col items-center justify-center gap-4 rounded-3xl border-2 border-dashed px-8 py-16 text-center transition ${
           isDragging
-            ? 'border-kiwi-flesh bg-kiwi-flesh-50/70 scale-[0.99]'
-            : 'border-stone-300/80 bg-white hover:border-kiwi-flesh/60 hover:bg-stone-50/60 shadow-soft'
+            ? 'border-kiwi-flesh dark:border-kiwi-lime bg-kiwi-flesh-50/70 dark:bg-kiwi-lime/10 scale-[0.99]'
+            : 'border-stone-300/80 dark:border-stone-700/80 bg-white dark:bg-[#181915] hover:border-kiwi-flesh/60 dark:hover:border-kiwi-lime/50 hover:bg-stone-50/60 dark:hover:bg-[#1E1F1A] shadow-soft'
         }`}
       >
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-stone-100 text-stone-700 transition group-hover:scale-105 shadow-2xs">
-          <UploadCloudIcon className="h-8 w-8 text-stone-800" />
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 transition group-hover:scale-105 shadow-2xs">
+          <UploadCloudIcon className="h-8 w-8 text-stone-800 dark:text-stone-200" />
         </div>
 
         <div>
-          <p className="text-base sm:text-lg font-bold text-stone-900 font-sans">
-            Drop {multiple ? 'files' : 'a file'} here, or <span className="text-kiwi-flesh-700 underline underline-offset-4">browse</span>
+          <p className="text-base sm:text-lg font-bold text-stone-900 dark:text-stone-100 font-sans">
+            Drop {multiple ? 'files' : 'a file'} here, or <span className="text-kiwi-flesh-700 dark:text-kiwi-lime underline underline-offset-4">browse</span>
           </p>
-          <p className="mt-2 text-sm text-stone-500 font-sans">{hint}</p>
+          <p className="mt-2 text-sm text-stone-500 dark:text-stone-400 font-sans">{hint}</p>
         </div>
 
         <input

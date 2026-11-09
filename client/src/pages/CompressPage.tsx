@@ -68,11 +68,11 @@ export default function CompressPage() {
           />
 
           {/* Safety Notice */}
-          <div className="flex items-start gap-3 rounded-2xl border border-black/[0.05] bg-white p-4.5 text-sm text-stone-600 shadow-xs">
-            <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 rounded-2xl border border-black/[0.05] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-4.5 text-sm text-stone-600 dark:text-stone-300 shadow-xs">
+            <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-kiwi-lime shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold text-stone-900">Non-destructive preservation</p>
-              <p className="text-stone-500 mt-1 leading-relaxed">
+              <p className="font-bold text-stone-900 dark:text-stone-100">Non-destructive preservation</p>
+              <p className="text-stone-500 dark:text-stone-400 mt-1 leading-relaxed">
                 PDF text, hyperlinks, forms, and vector curves remain intact without rasterization. If an operation would make a file larger, the original size is preserved.
               </p>
             </div>
@@ -80,8 +80,8 @@ export default function CompressPage() {
 
           {/* Compression Level Selector */}
           {state === 'idle' && (
-            <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-soft space-y-4">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500">
+            <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft space-y-4">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 Optimization Strength
               </h2>
 
@@ -93,12 +93,12 @@ export default function CompressPage() {
                     onClick={() => setLevel(item.value)}
                     className={`flex flex-col rounded-2xl border p-4 text-left transition ${
                       level === item.value
-                        ? 'border-kiwi-flesh bg-kiwi-flesh/5 ring-2 ring-kiwi-flesh/30 shadow-xs'
-                        : 'border-stone-200/90 bg-white hover:bg-stone-50 shadow-2xs'
+                        ? 'border-kiwi-flesh dark:border-kiwi-lime bg-kiwi-flesh/5 dark:bg-kiwi-lime/10 ring-2 ring-kiwi-flesh/30 dark:ring-kiwi-lime/30 shadow-xs'
+                        : 'border-stone-200/90 dark:border-white/[0.08] bg-white dark:bg-[#1C1D18] hover:bg-stone-50 dark:hover:bg-[#22231E] shadow-2xs'
                     }`}
                   >
-                    <span className="text-sm sm:text-base font-bold text-stone-900">{item.label}</span>
-                    <span className="mt-1.5 text-xs sm:text-sm text-stone-500 leading-relaxed">
+                    <span className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100">{item.label}</span>
+                    <span className="mt-1.5 text-xs sm:text-sm text-stone-500 dark:text-stone-400 leading-relaxed">
                       {item.desc}
                     </span>
                   </button>
@@ -144,11 +144,11 @@ export default function CompressPage() {
 
           {/* Error Message */}
           {state === 'failed' && (
-            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4 text-xs text-rose-700 animate-slide-up">
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 dark:border-rose-900/50 bg-rose-50/80 dark:bg-rose-950/40 p-4 text-xs text-rose-700 dark:text-rose-300 animate-slide-up">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="font-semibold">Compression failed</p>
-                <p className="mt-1 text-rose-600">{errorMessage}</p>
+                <p className="mt-1 text-rose-600 dark:text-rose-400">{errorMessage}</p>
               </div>
             </div>
           )}

@@ -13,16 +13,16 @@ export function PageShell({ title, description, icon, children }: PageShellProps
       <header className="mb-9">
         <div className="flex items-center gap-3">
           {icon && (
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-800 shadow-2xs [&>svg]:h-5 [&>svg]:w-5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-black/[0.04] dark:border-white/[0.08] shadow-2xs [&>svg]:h-5 [&>svg]:w-5">
               {icon}
             </div>
           )}
-          <h1 className="text-2xl font-extrabold tracking-tight text-stone-900 sm:text-3xl font-sans">
+          <h1 className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-50 sm:text-3xl font-sans">
             {title}
           </h1>
         </div>
         {description && (
-          <p className="mt-2.5 max-w-2xl text-sm sm:text-base text-stone-600 leading-relaxed font-sans">
+          <p className="mt-2.5 max-w-2xl text-sm sm:text-base text-stone-600 dark:text-stone-400 leading-relaxed font-sans">
             {description}
           </p>
         )}

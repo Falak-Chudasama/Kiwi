@@ -22,9 +22,9 @@ export function useToast() {
 }
 
 const iconByKind: Record<ToastKind, ReactNode> = {
-  success: <CheckCircleIcon className="h-4 w-4 text-emerald-600 shrink-0" />,
-  error: <AlertCircleIcon className="h-4 w-4 text-rose-600 shrink-0" />,
-  info: <AlertCircleIcon className="h-4 w-4 text-kiwi-flesh-700 shrink-0" />,
+  success: <CheckCircleIcon className="h-4 w-4 text-emerald-600 dark:text-kiwi-lime shrink-0" />,
+  error: <AlertCircleIcon className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0" />,
+  info: <AlertCircleIcon className="h-4 w-4 text-kiwi-flesh-700 dark:text-kiwi-lime shrink-0" />,
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -56,7 +56,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={toast.id}
             role="alert"
-            className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-black/[0.06] bg-white/95 px-4 py-3 text-sm text-stone-900 shadow-lift backdrop-blur-md animate-slide-up"
+            className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white/95 dark:bg-[#181915]/95 px-4 py-3 text-sm text-stone-900 dark:text-stone-100 shadow-lift backdrop-blur-md animate-slide-up"
           >
             {iconByKind[toast.kind]}
             <span className="flex-1 text-xs font-medium leading-relaxed">{toast.message}</span>
@@ -64,7 +64,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               type="button"
               onClick={() => dismiss(toast.id)}
               aria-label="Dismiss notice"
-              className="rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+              className="rounded-lg p-1 text-stone-400 dark:text-stone-500 transition hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-700 dark:hover:text-stone-300"
             >
               <CloseIcon className="h-3 w-3" />
             </button>

@@ -56,14 +56,14 @@ export default function HomePage() {
       {/* Hero Header */}
       <section className="text-center mb-10">
         <div className="inline-flex items-center justify-center mb-5">
-          <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white p-2.5 shadow-soft border border-black/[0.05]">
+          <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white dark:bg-[#181915] p-2.5 shadow-soft border border-black/[0.05] dark:border-white/[0.08]">
             <img src={kiwiIcon} alt="Kiwi" className="h-11 w-11 object-contain" />
           </div>
         </div>
-        <h1 className="font-display text-4xl font-extrabold tracking-tight text-stone-900 sm:text-5xl lg:text-6xl">
+        <h1 className="font-display text-4xl font-extrabold tracking-tight text-stone-900 dark:text-stone-50 sm:text-5xl lg:text-6xl">
           Quiet file conversion workspace.
         </h1>
-        <p className="mx-auto mt-4 max-w-xl text-base sm:text-lg text-stone-600 font-sans leading-relaxed">
+        <p className="mx-auto mt-4 max-w-xl text-base sm:text-lg text-stone-600 dark:text-stone-400 font-sans leading-relaxed">
           High-fidelity format conversion, non-destructive optimization, and archive tools.
         </p>
       </section>
@@ -80,10 +80,10 @@ export default function HomePage() {
       {/* Specialized Tool Shortcuts */}
       <section>
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 font-sans">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 font-sans">
             Specialized Toolkits
           </h2>
-          <span className="text-sm text-stone-400">Choose a dedicated mode</span>
+          <span className="text-sm text-stone-400 dark:text-stone-500">Choose a dedicated mode</span>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -91,21 +91,21 @@ export default function HomePage() {
             <Link
               key={to}
               to={to}
-              className="group flex flex-col justify-between rounded-2xl border border-black/[0.06] bg-white p-6 shadow-soft transition hover:border-kiwi-flesh/50 hover:shadow-lift"
+              className="group flex flex-col justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft transition hover:border-kiwi-flesh/50 dark:hover:border-kiwi-lime/50 hover:shadow-lift"
             >
               <div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-100 text-stone-700 transition group-hover:bg-kiwi-flesh/10 group-hover:text-kiwi-flesh-700">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 transition group-hover:bg-kiwi-flesh/10 dark:group-hover:bg-kiwi-lime/10 group-hover:text-kiwi-flesh-700 dark:group-hover:text-kiwi-lime">
                   <Icon className="h-6 w-6" />
                 </div>
-                <h3 className="mt-4 text-base sm:text-lg font-bold text-stone-900 font-sans group-hover:text-kiwi-flesh-700 transition">
+                <h3 className="mt-4 text-base sm:text-lg font-bold text-stone-900 dark:text-stone-100 font-sans group-hover:text-kiwi-flesh-700 dark:group-hover:text-kiwi-lime transition">
                   {title}
                 </h3>
-                <p className="mt-2 text-sm text-stone-600 leading-relaxed font-sans">
+                <p className="mt-2 text-sm text-stone-600 dark:text-stone-400 leading-relaxed font-sans">
                   {description}
                 </p>
               </div>
 
-              <div className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-stone-400 group-hover:text-kiwi-flesh-700 transition">
+              <div className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-stone-400 dark:text-stone-500 group-hover:text-kiwi-flesh-700 dark:group-hover:text-kiwi-lime transition">
                 <span>Open tool</span>
                 <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
               </div>

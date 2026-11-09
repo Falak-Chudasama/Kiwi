@@ -200,7 +200,7 @@ export default function PdfToolsPage() {
       icon={<FileText className="h-4 w-4" />}
     >
       {/* Operation Tabs Strip */}
-      <div className="flex flex-wrap gap-2 rounded-2xl border border-black/[0.06] bg-white p-2 shadow-soft">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-2 shadow-soft">
         {OPERATIONS.map(({ value, label, icon: Icon }) => (
           <button
             key={value}
@@ -208,8 +208,8 @@ export default function PdfToolsPage() {
             onClick={() => switchOperation(value)}
             className={`flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold transition ${
               operation === value
-                ? 'bg-stone-900 text-white shadow-xs'
-                : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+                ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 shadow-xs'
+                : 'text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-white'
             }`}
           >
             <Icon className="h-4 w-4" />
@@ -234,7 +234,7 @@ export default function PdfToolsPage() {
           {/* Selected File(s) */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-bold uppercase tracking-wider text-stone-500">
+              <span className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 Selected Input ({files.length})
               </span>
               {state === 'idle' && (
@@ -244,7 +244,7 @@ export default function PdfToolsPage() {
                     reset()
                     setFiles([])
                   }}
-                  className="text-sm font-semibold text-stone-400 hover:text-stone-700 transition"
+                  className="text-sm font-semibold text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 transition"
                 >
                   Clear all
                 </button>
@@ -262,14 +262,14 @@ export default function PdfToolsPage() {
 
           {/* Contextual Operation Configuration */}
           {state === 'idle' && (
-            <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-soft space-y-5">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500">
+            <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft space-y-5">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 {currentOp.label} Options
               </h2>
 
               {operation === 'split' && (
                 <div className="space-y-2 text-xs">
-                  <label className="block font-semibold text-stone-700">
+                  <label className="block font-semibold text-stone-700 dark:text-stone-300">
                     Page Ranges to Extract
                   </label>
                   <TextField
@@ -277,7 +277,7 @@ export default function PdfToolsPage() {
                     value={splitRanges}
                     onChange={(e) => setSplitRanges(e.target.value)}
                   />
-                  <p className="text-[11px] text-stone-400">
+                  <p className="text-[11px] text-stone-400 dark:text-stone-500">
                     Each range is extracted as a separate result file available for individual or batch download.
                   </p>
                 </div>
@@ -285,7 +285,7 @@ export default function PdfToolsPage() {
 
               {operation === 'reorder' && (
                 <div className="space-y-2 text-xs">
-                  <label className="block font-semibold text-stone-700">
+                  <label className="block font-semibold text-stone-700 dark:text-stone-300">
                     New Page Sequence (1-based page numbers)
                   </label>
                   <TextField
@@ -293,7 +293,7 @@ export default function PdfToolsPage() {
                     value={pageOrder}
                     onChange={(e) => setPageOrder(e.target.value)}
                   />
-                  <p className="text-[11px] text-stone-400">
+                  <p className="text-[11px] text-stone-400 dark:text-stone-500">
                     Specify the desired page order. Every page from the original document must appear exactly once.
                   </p>
                 </div>
@@ -302,11 +302,11 @@ export default function PdfToolsPage() {
               {operation === 'to_images' && (
                 <div className="grid gap-3 sm:grid-cols-2 text-xs">
                   <div>
-                    <label className="block font-semibold text-stone-700 mb-1">Image Format</label>
+                    <label className="block font-semibold text-stone-700 dark:text-stone-300 mb-1">Image Format</label>
                     <select
                       value={imageFormat}
                       onChange={(e) => setImageFormat(e.target.value)}
-                      className="focus-ring w-full rounded-xl border border-stone-200/80 bg-white px-3 py-2 text-xs text-stone-900"
+                      className="focus-ring w-full rounded-xl border border-stone-200/80 dark:border-white/[0.08] bg-white dark:bg-[#181915] px-3 py-2 text-xs text-stone-900 dark:text-stone-100"
                     >
                       <option value="png">PNG (Lossless)</option>
                       <option value="jpg">JPG (Photo/Document)</option>
@@ -316,11 +316,11 @@ export default function PdfToolsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block font-semibold text-stone-700 mb-1">Render Quality (DPI)</label>
+                    <label className="block font-semibold text-stone-700 dark:text-stone-300 mb-1">Render Quality (DPI)</label>
                     <select
                       value={dpi}
                       onChange={(e) => setDpi(Number(e.target.value))}
-                      className="focus-ring w-full rounded-xl border border-stone-200/80 bg-white px-3 py-2 text-xs text-stone-900"
+                      className="focus-ring w-full rounded-xl border border-stone-200/80 dark:border-white/[0.08] bg-white dark:bg-[#181915] px-3 py-2 text-xs text-stone-900 dark:text-stone-100"
                     >
                       <option value={96}>96 DPI (Web Draft)</option>
                       <option value={150}>150 DPI (Balanced Standard)</option>
@@ -332,7 +332,7 @@ export default function PdfToolsPage() {
 
               {operation === 'rotate' && (
                 <div className="space-y-2 text-xs">
-                  <label className="block font-semibold text-stone-700">Rotation Angle</label>
+                  <label className="block font-semibold text-stone-700 dark:text-stone-300">Rotation Angle</label>
                   <div className="flex gap-2">
                     {[90, 180, 270].map((deg) => (
                       <button
@@ -341,8 +341,8 @@ export default function PdfToolsPage() {
                         onClick={() => setRotateDegrees(deg)}
                         className={`rounded-xl px-4 py-2 text-xs font-bold transition border ${
                           rotateDegrees === deg
-                            ? 'bg-stone-900 text-white border-stone-900'
-                            : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                            ? 'bg-stone-900 text-white border-stone-900 dark:bg-stone-100 dark:text-stone-900 dark:border-stone-100'
+                            : 'bg-white dark:bg-[#181915] text-stone-700 dark:text-stone-300 border-stone-200 dark:border-white/[0.08] hover:bg-stone-50 dark:hover:bg-[#1F201A]'
                         }`}
                       >
                         +{deg}° Clockwise
@@ -354,7 +354,7 @@ export default function PdfToolsPage() {
 
               {(operation === 'protect' || operation === 'unlock') && (
                 <div className="space-y-2 text-xs">
-                  <label className="block font-semibold text-stone-700">
+                  <label className="block font-semibold text-stone-700 dark:text-stone-300">
                     {operation === 'protect' ? 'Set Password for PDF' : 'Document Password'}
                   </label>
                   <TextField
@@ -363,7 +363,7 @@ export default function PdfToolsPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
-                  <p className="text-[11px] text-stone-400">
+                  <p className="text-[11px] text-stone-400 dark:text-stone-500">
                     {operation === 'protect'
                       ? 'Applies AES-256 standard encryption.'
                       : 'Decryption happens locally in process RAM.'}
@@ -374,7 +374,7 @@ export default function PdfToolsPage() {
               {operation === 'watermark' && (
                 <div className="space-y-3 text-xs">
                   <div>
-                    <label className="block font-semibold text-stone-700 mb-1">Watermark Text</label>
+                    <label className="block font-semibold text-stone-700 dark:text-stone-300 mb-1">Watermark Text</label>
                     <TextField
                       value={watermarkText}
                       onChange={(e) => setWatermarkText(e.target.value)}
@@ -383,7 +383,7 @@ export default function PdfToolsPage() {
                   </div>
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div>
-                      <label className="block font-semibold text-stone-700 mb-1">
+                      <label className="block font-semibold text-stone-700 dark:text-stone-300 mb-1">
                         Opacity ({Math.round(watermarkOpacity * 100)}%)
                       </label>
                       <input
@@ -397,7 +397,7 @@ export default function PdfToolsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block font-semibold text-stone-700 mb-1">
+                      <label className="block font-semibold text-stone-700 dark:text-stone-300 mb-1">
                         Font Size ({watermarkSize} pt)
                       </label>
                       <TextField
@@ -409,7 +409,7 @@ export default function PdfToolsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block font-semibold text-stone-700 mb-1">
+                      <label className="block font-semibold text-stone-700 dark:text-stone-300 mb-1">
                         Angle ({watermarkAngle}°)
                       </label>
                       <TextField
@@ -426,11 +426,11 @@ export default function PdfToolsPage() {
 
               {operation === 'ocr' && (
                 <div className="space-y-2 text-xs">
-                  <label className="block font-semibold text-stone-700">OCR Language</label>
+                  <label className="block font-semibold text-stone-700 dark:text-stone-300">OCR Language</label>
                   <select
                     value={ocrLanguage}
                     onChange={(e) => setOcrLanguage(e.target.value)}
-                    className="focus-ring w-full rounded-xl border border-stone-200/80 bg-white px-3 py-2 text-xs text-stone-900"
+                    className="focus-ring w-full rounded-xl border border-stone-200/80 dark:border-white/[0.08] bg-white dark:bg-[#181915] px-3 py-2 text-xs text-stone-900 dark:text-stone-100"
                   >
                     <option value="eng">English (eng)</option>
                     <option value="deu">German (deu)</option>
@@ -438,7 +438,7 @@ export default function PdfToolsPage() {
                     <option value="spa">Spanish (spa)</option>
                     <option value="ita">Italian (ita)</option>
                   </select>
-                  <p className="text-[11px] text-stone-400">
+                  <p className="text-[11px] text-stone-400 dark:text-stone-500">
                     Tesseract recognizes text on scanned pages and inserts an invisible searchable text layer over each page.
                   </p>
                 </div>
@@ -482,11 +482,11 @@ export default function PdfToolsPage() {
 
           {/* Error Message */}
           {state === 'failed' && (
-            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4 text-xs text-rose-700 animate-slide-up">
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 dark:border-rose-900/50 bg-rose-50/80 dark:bg-rose-950/40 p-4 text-xs text-rose-700 dark:text-rose-300 animate-slide-up">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="font-semibold">Operation failed</p>
-                <p className="mt-1 text-rose-600">{errorMessage}</p>
+                <p className="mt-1 text-rose-600 dark:text-rose-400">{errorMessage}</p>
               </div>
             </div>
           )}

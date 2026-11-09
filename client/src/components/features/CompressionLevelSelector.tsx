@@ -30,12 +30,12 @@ export function CompressionLevelSelector({ value, onChange }: CompressionLevelSe
             onClick={() => onChange(level.value)}
             className={`focus-ring rounded-2xl border px-3 py-3 text-left transition ${
               active
-                ? 'border-kiwi-flesh bg-kiwi-flesh text-white shadow-soft'
-                : 'border-kiwi-shell-50 bg-white text-kiwi-ink hover:border-kiwi-flesh/40'
+                ? 'border-kiwi-flesh bg-kiwi-flesh text-white shadow-soft dark:border-kiwi-lime dark:bg-kiwi-flesh'
+                : 'border-stone-200/90 dark:border-white/[0.08] bg-white dark:bg-[#181915] text-stone-900 dark:text-stone-100 hover:border-kiwi-flesh/40 dark:hover:border-kiwi-lime/40'
             }`}
           >
             <div className="font-heading text-sm font-semibold">{level.label}</div>
-            <div className={`text-xs ${active ? 'text-white/80' : 'text-kiwi-ink/45'}`}>
+            <div className={`text-xs ${active ? 'text-white/80' : 'text-stone-500 dark:text-stone-400'}`}>
               {level.hint}
             </div>
           </button>

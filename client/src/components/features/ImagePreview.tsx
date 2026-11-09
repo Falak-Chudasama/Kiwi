@@ -28,8 +28,8 @@ function PreviewTile({ file }: { file: File }) {
   }, [file])
 
   return (
-    <div className="group overflow-hidden rounded-xl border border-black/[0.06] bg-white shadow-soft transition hover:shadow-lift">
-      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-stone-50/80 p-2.5">
+    <div className="group overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] shadow-soft transition hover:shadow-lift">
+      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden bg-stone-50/80 dark:bg-[#121310] p-2.5">
         {objectUrl && !failed ? (
           <img
             src={objectUrl}
@@ -39,14 +39,14 @@ function PreviewTile({ file }: { file: File }) {
             loading="lazy"
           />
         ) : (
-          <div className="px-3 text-center text-[11px] font-medium text-stone-400">
+          <div className="px-3 text-center text-[11px] font-medium text-stone-400 dark:text-stone-500">
             Preview unavailable
           </div>
         )}
       </div>
-      <div className="px-3 py-2 border-t border-stone-100">
-        <p className="truncate text-xs font-semibold text-stone-900">{file.name}</p>
-        <p className="text-[10px] text-stone-400">{formatBytes(file.size)}</p>
+      <div className="px-3 py-2 border-t border-stone-100 dark:border-stone-800">
+        <p className="truncate text-xs font-semibold text-stone-900 dark:text-stone-100">{file.name}</p>
+        <p className="text-[10px] text-stone-400 dark:text-stone-500">{formatBytes(file.size)}</p>
       </div>
     </div>
   )
@@ -59,14 +59,14 @@ export function ImagePreview({ files, maxPreviews = 6 }: ImagePreviewProps) {
   const remainingCount = files.length - maxPreviews
 
   return (
-    <div className="rounded-2xl border border-black/[0.06] bg-stone-100/50 p-4">
+    <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-stone-100/50 dark:bg-[#181915]/50 p-4">
       <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-stone-500">
-          <ImageIcon className="h-3.5 w-3.5 text-stone-600" />
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+          <ImageIcon className="h-3.5 w-3.5 text-stone-600 dark:text-stone-400" />
           <span>Selected Images ({files.length})</span>
         </div>
         {remainingCount > 0 && (
-          <span className="text-xs font-medium text-stone-400">
+          <span className="text-xs font-medium text-stone-400 dark:text-stone-500">
             +{remainingCount} more
           </span>
         )}

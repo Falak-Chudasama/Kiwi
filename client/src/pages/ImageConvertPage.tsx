@@ -90,7 +90,7 @@ export default function ImageConvertPage() {
           {/* Selected Files List */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-stone-500 uppercase tracking-wider">
+              <span className="text-sm font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider">
                 Input Images ({files.length})
               </span>
               {state === 'idle' && (
@@ -100,7 +100,7 @@ export default function ImageConvertPage() {
                     reset()
                     setFiles([])
                   }}
-                  className="text-sm font-semibold text-stone-400 hover:text-stone-700 transition"
+                  className="text-sm font-semibold text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 transition"
                 >
                   Clear all
                 </button>
@@ -118,8 +118,8 @@ export default function ImageConvertPage() {
 
           {/* Target Format Picker */}
           {state === 'idle' && (
-            <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-soft">
-              <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-stone-500">
+            <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft">
+              <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 Target Image Format
               </h2>
               <FormatPicker
@@ -133,32 +133,32 @@ export default function ImageConvertPage() {
 
           {/* Collapsible Advanced Resizing Section */}
           {state === 'idle' && (
-            <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-soft transition">
+            <div className="overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] shadow-soft transition">
               <button
                 type="button"
                 onClick={() => setShowAdvanced((prev) => !prev)}
-                className="flex w-full items-center justify-between p-5 text-left transition hover:bg-stone-50/50"
+                className="flex w-full items-center justify-between p-5 text-left transition hover:bg-stone-50/50 dark:hover:bg-stone-800/40"
               >
-                <div className="flex items-center gap-2.5 text-sm sm:text-base font-bold text-stone-900">
-                  <Sliders className="h-4 w-4 text-stone-600" />
+                <div className="flex items-center gap-2.5 text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100">
+                  <Sliders className="h-4 w-4 text-stone-600 dark:text-stone-400" />
                   <span>Resizing & Dimension Controls (Optional)</span>
                 </div>
                 <ChevronDown
-                  className={`h-4 w-4 text-stone-400 transition-transform duration-200 ${
+                  className={`h-4 w-4 text-stone-400 dark:text-stone-500 transition-transform duration-200 ${
                     showAdvanced ? 'rotate-180' : ''
                   }`}
                 />
               </button>
 
               {showAdvanced && (
-                <div className="border-t border-stone-100 p-5 text-sm space-y-4 animate-slide-up">
-                  <p className="text-stone-600 leading-relaxed text-sm">
+                <div className="border-t border-stone-100 dark:border-stone-800 p-5 text-sm space-y-4 animate-slide-up">
+                  <p className="text-stone-600 dark:text-stone-400 leading-relaxed text-sm">
                     Leave one dimension blank to preserve the natural aspect ratio automatically.
                   </p>
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="block text-sm font-bold text-stone-700 mb-1.5">
+                      <label className="block text-sm font-bold text-stone-700 dark:text-stone-300 mb-1.5">
                         Width (px)
                       </label>
                       <TextField
@@ -170,7 +170,7 @@ export default function ImageConvertPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-stone-700 mb-1.5">
+                      <label className="block text-sm font-bold text-stone-700 dark:text-stone-300 mb-1.5">
                         Height (px)
                       </label>
                       <TextField
@@ -183,12 +183,12 @@ export default function ImageConvertPage() {
                     </div>
                   </div>
 
-                  <label className="flex items-center gap-2.5 cursor-pointer text-stone-700 font-medium">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-stone-700 dark:text-stone-300 font-medium">
                     <input
                       type="checkbox"
                       checked={exactStretch}
                       onChange={(e) => setExactStretch(e.target.checked)}
-                      className="h-4 w-4 rounded border-stone-300 text-kiwi-flesh focus:ring-kiwi-flesh"
+                      className="h-4 w-4 rounded border-stone-300 dark:border-stone-600 text-kiwi-flesh focus:ring-kiwi-flesh"
                     />
                     <span className="text-sm">
                       Force exact dimensions (stretch image if ratio differs)
@@ -236,11 +236,11 @@ export default function ImageConvertPage() {
 
           {/* Error */}
           {state === 'failed' && (
-            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4 text-xs text-rose-700 animate-slide-up">
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 dark:border-rose-900/50 bg-rose-50/80 dark:bg-rose-950/40 p-4 text-xs text-rose-700 dark:text-rose-300 animate-slide-up">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="font-semibold">Image processing failed</p>
-                <p className="mt-1 text-rose-600">{errorMessage}</p>
+                <p className="mt-1 text-rose-600 dark:text-rose-400">{errorMessage}</p>
               </div>
             </div>
           )}

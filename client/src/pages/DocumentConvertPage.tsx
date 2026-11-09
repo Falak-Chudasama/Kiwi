@@ -149,7 +149,7 @@ export default function DocumentConvertPage() {
           {/* Selected File(s) Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-stone-500 uppercase tracking-wider">
+              <span className="text-sm font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider">
                 Selected Input ({files.length})
               </span>
               {state === 'idle' && (
@@ -159,7 +159,7 @@ export default function DocumentConvertPage() {
                     reset()
                     setFiles([])
                   }}
-                  className="text-sm font-semibold text-stone-400 hover:text-stone-700 transition"
+                  className="text-sm font-semibold text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 transition"
                 >
                   Clear selection
                 </button>
@@ -177,13 +177,13 @@ export default function DocumentConvertPage() {
 
           {/* Target Format Picker */}
           {state === 'idle' && (
-            <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-soft">
+            <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft">
               <div className="mb-5 flex items-center justify-between">
                 <div>
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                     Output Format
                   </h2>
-                  <p className="mt-1 text-sm text-stone-600 font-medium">
+                  <p className="mt-1 text-sm text-stone-600 dark:text-stone-400 font-medium">
                     {loadingTargets
                       ? 'Resolving format capabilities…'
                       : `${readyCount} formats ready for conversion`}
@@ -201,12 +201,12 @@ export default function DocumentConvertPage() {
 
           {/* Conversion Action Bar */}
           {state === 'idle' && targetExt && (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-black/[0.06] bg-white p-5 sm:p-6 shadow-soft">
-              <div className="flex items-center gap-3 text-sm sm:text-base text-stone-700">
-                <CheckCircle2 className="h-5 w-5 text-kiwi-flesh-700 shrink-0" />
-                <span className="font-bold text-stone-900 truncate max-w-xs">{files[0].name}</span>
-                <ArrowRight className="h-4 w-4 text-stone-400" />
-                <span className="rounded-lg bg-kiwi-flesh/10 px-3 py-1 text-sm font-extrabold text-kiwi-flesh-700 uppercase">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-5 sm:p-6 shadow-soft">
+              <div className="flex items-center gap-3 text-sm sm:text-base text-stone-700 dark:text-stone-300">
+                <CheckCircle2 className="h-5 w-5 text-kiwi-flesh-700 dark:text-kiwi-lime shrink-0" />
+                <span className="font-bold text-stone-900 dark:text-stone-100 truncate max-w-xs">{files[0].name}</span>
+                <ArrowRight className="h-4 w-4 text-stone-400 dark:text-stone-500" />
+                <span className="rounded-lg bg-kiwi-flesh/10 dark:bg-kiwi-lime/10 px-3 py-1 text-sm font-extrabold text-kiwi-flesh-700 dark:text-kiwi-lime uppercase">
                   {targetExt}
                 </span>
               </div>
@@ -247,11 +247,11 @@ export default function DocumentConvertPage() {
 
           {/* Error Message */}
           {state === 'failed' && (
-            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4 text-xs text-rose-700 animate-slide-up">
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 dark:border-rose-900/50 bg-rose-50/80 dark:bg-rose-950/40 p-4 text-xs text-rose-700 dark:text-rose-300 animate-slide-up">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="font-semibold">Conversion could not be completed</p>
-                <p className="mt-1 text-rose-600 leading-relaxed">{errorMessage}</p>
+                <p className="mt-1 text-rose-600 dark:text-rose-400 leading-relaxed">{errorMessage}</p>
               </div>
             </div>
           )}

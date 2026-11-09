@@ -14,16 +14,16 @@ const EXT_CATEGORY: Record<string, FileCategory> = {
 }
 
 export const CATEGORY_CLASSES: Record<FileCategory, string> = {
-  pdf: 'bg-red-50 text-red-600 border-red-100',
-  image: 'bg-sky-50 text-sky-600 border-sky-100',
-  document: 'bg-blue-50 text-blue-600 border-blue-100',
-  spreadsheet: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-  presentation: 'bg-orange-50 text-orange-600 border-orange-100',
-  archive: 'bg-violet-50 text-violet-600 border-violet-100',
-  text: 'bg-slate-50 text-slate-600 border-slate-100',
-  audio: 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-100',
-  video: 'bg-rose-50 text-rose-600 border-rose-100',
-  generic: 'bg-stone-50 text-stone-600 border-stone-100',
+  pdf: 'bg-red-50 text-red-600 border-red-100 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900/50',
+  image: 'bg-sky-50 text-sky-600 border-sky-100 dark:bg-sky-950/40 dark:text-sky-400 dark:border-sky-900/50',
+  document: 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900/50',
+  spreadsheet: 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50',
+  presentation: 'bg-orange-50 text-orange-600 border-orange-100 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-900/50',
+  archive: 'bg-violet-50 text-violet-600 border-violet-100 dark:bg-violet-950/40 dark:text-violet-400 dark:border-violet-900/50',
+  text: 'bg-slate-50 text-slate-600 border-slate-100 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700/50',
+  audio: 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-100 dark:bg-fuchsia-950/40 dark:text-fuchsia-400 dark:border-fuchsia-900/50',
+  video: 'bg-rose-50 text-rose-600 border-rose-100 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50',
+  generic: 'bg-stone-50 text-stone-600 border-stone-100 dark:bg-stone-800 dark:text-stone-300 dark:border-stone-700/50',
 }
 
 export function extensionOf(name: string): string {

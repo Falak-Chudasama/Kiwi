@@ -38,6 +38,12 @@
     background-color: #F8F9F5;
     color: #1A1A1A;
     min-height: 100vh;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  html.dark body {
+    background-color: #121310;
+    color: #F3F4F1;
   }
 
   /* Unbounded is strictly display-only for brand wordmarks and prominent hero typography */
@@ -61,11 +67,23 @@
     box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
   }
 
+  html.dark .glass-capsule {
+    background: rgba(24, 25, 21, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.45), 0 2px 8px -1px rgba(0, 0, 0, 0.3);
+  }
+
   /* Glass Overlay / Sheets / Trays */
   .glass-panel {
     background: rgba(255, 255, 255, 0.78);
     border: 1px solid rgba(0, 0, 0, 0.06);
     box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.08);
+  }
+
+  html.dark .glass-panel {
+    background: rgba(24, 25, 21, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.5);
   }
 
   /* Solid / Translucent fallbacks when backdrop-filter is unsupported */
@@ -87,6 +105,12 @@
     .glass-panel {
       background: #FFFFFF;
     }
+    html.dark .glass-capsule {
+      background: #181915;
+    }
+    html.dark .glass-panel {
+      background: #181915;
+    }
   }
 }
 
@@ -97,6 +121,9 @@
   .focus-ring:focus-visible {
     box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px #0DAA26;
   }
+  html.dark .focus-ring:focus-visible {
+    box-shadow: 0 0 0 2px #181915, 0 0 0 4px #84DD00;
+  }
 
   /* Clean minimal scrollbars */
   .scrollbar-clean::-webkit-scrollbar {
@@ -106,6 +133,9 @@
   .scrollbar-clean::-webkit-scrollbar-thumb {
     background-color: rgba(0, 0, 0, 0.15);
     border-radius: 999px;
+  }
+  html.dark .scrollbar-clean::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
   }
 }
 

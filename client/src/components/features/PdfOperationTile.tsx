@@ -14,8 +14,8 @@ export function PdfOperationTile({ label, icon, active, onClick }: PdfOperationT
       onClick={onClick}
       className={`focus-ring flex flex-col items-center gap-2 rounded-2xl border px-3 py-4 text-center transition ${
         active
-          ? 'border-kiwi-flesh bg-kiwi-flesh text-white shadow-soft'
-          : 'border-kiwi-shell-50 bg-white text-kiwi-ink/70 hover:border-kiwi-flesh/40 hover:text-kiwi-ink'
+          ? 'border-kiwi-flesh bg-kiwi-flesh text-white shadow-soft dark:border-kiwi-lime dark:bg-kiwi-flesh'
+          : 'border-stone-200/90 dark:border-white/[0.08] bg-white dark:bg-[#181915] text-stone-700 dark:text-stone-300 hover:border-kiwi-flesh/40 dark:hover:border-kiwi-lime/40 hover:text-stone-900 dark:hover:text-stone-100 shadow-2xs'
       }`}
     >
       {icon}
