@@ -1,24 +1,28 @@
 from __future__ import annotations
 
+import io
 import os
 import tarfile
 import zipfile
 from pathlib import Path
 
+from app.core.config import settings
+
 try:
     import py7zr
-except ImportError:  # Optional until a 7Z operation is requested.
+except ImportError:
     py7zr = None
 
 try:
     import rarfile
-except ImportError:  # Optional until a RAR operation is requested.
+except ImportError:
     rarfile = None
-
 
 _COMPOUND_SUFFIXES = (
     ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz"
 )
+
+MAX_RATIO = 100  # Max allowable uncompressed-to-compressed ratio (decompression bomb protection)
 
 
 def archive_stem(path: Path) -> str:
@@ -49,6 +53,8 @@ def create_archive(input_paths: list[Path], out_dir: Path, archive_format: str, 
     if archive_name.lower().endswith(f".{archive_format}"):
         archive_name = archive_name.rsplit(".", 1)[0]
 
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     if archive_format == "zip":
         output_path = out_dir / f"{archive_name}.zip"
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
@@ -58,7 +64,7 @@ def create_archive(input_paths: list[Path], out_dir: Path, archive_format: str, 
 
     if archive_format == "7z":
         if py7zr is None:
-            raise RuntimeError("7Z support requires py7zr. Install Kiwi dependencies again.")
+            raise RuntimeError("7Z creation requires the py7zr package.")
         output_path = out_dir / f"{archive_name}.7z"
         with py7zr.SevenZipFile(output_path, "w") as archive:
             for path in input_paths:
@@ -75,71 +81,214 @@ def create_archive(input_paths: list[Path], out_dir: Path, archive_format: str, 
     raise ValueError(f"Unsupported archive format: {archive_format}")
 
 
-def create_zip_bundle(input_paths: list[Path], output_path: Path, root_name: str | None = None) -> Path:
-    root = Path(root_name) if root_name else None
-    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-        for path in input_paths:
-            arcname = path.name if root is None else str(root / path.name)
-            zf.write(path, arcname=arcname)
-    return output_path
+def _sanitize_archive_member(dest_root: Path, member_name: str) -> Path:
+    """Validates that member_name resolves strictly within dest_root.
 
+    Rejects directory traversal (Zip Slip), Windows drive prefixes, UNC paths,
+    and null bytes.
+    """
+    clean = member_name.replace("\\", "/").strip()
 
-def _safe_member_path(base: Path, member_name: str) -> Path:
-    clean = member_name.replace("\\", "/")
-    target = (base / clean).resolve()
-    base_resolved = base.resolve()
-    if target != base_resolved and base_resolved not in target.parents:
-        raise ValueError("Archive contains an unsafe path.")
+    # Reject null bytes or absolute paths
+    if "\x00" in clean or clean.startswith("/"):
+        raise ValueError("Archive entry contains an illegal absolute path.")
+
+    # Strip Windows drive letters (e.g., C:)
+    if len(clean) >= 2 and clean[1] == ":":
+        raise ValueError("Archive entry contains a drive specification.")
+
+    # Check for path traversal components
+    parts = clean.split("/")
+    if any(p == ".." for p in parts):
+        raise ValueError("Archive entry attempts directory traversal ('..').")
+
+    # Filter out empty parts
+    filtered_parts = [p for p in parts if p and p != "."]
+    if not filtered_parts:
+        raise ValueError("Archive entry name is empty.")
+
+    target = dest_root.joinpath(*filtered_parts).resolve()
+    dest_root_resolved = dest_root.resolve()
+
+    if not str(target).startswith(str(dest_root_resolved)):
+        raise ValueError("Archive entry resolves outside extraction directory.")
+
     return target
 
 
-def _extract_zip(input_path: Path, extract_dir: Path) -> None:
-    with zipfile.ZipFile(input_path) as zf:
-        for member in zf.infolist():
-            _safe_member_path(extract_dir, member.filename)
-        zf.extractall(extract_dir)
+def _is_zip_symlink(info: zipfile.ZipInfo) -> bool:
+    """Checks whether a ZipInfo entry is marked as a UNIX symbolic link."""
+    mode = info.external_attr >> 16
+    return (mode & 0o170000) == 0o120000
 
 
-def _extract_tar(input_path: Path, extract_dir: Path) -> None:
+def _extract_zip_hardened(input_path: Path, dest_dir: Path) -> list[Path]:
+    max_bytes = settings.max_archive_uncompressed_mb * 1024 * 1024
+    total_written = 0
+    extracted_files: list[Path] = []
+
+    with zipfile.ZipFile(input_path, "r") as zf:
+        infolist = zf.infolist()
+        if len(infolist) > settings.max_archive_entries:
+            raise ValueError(f"Archive exceeds maximum entry count of {settings.max_archive_entries}.")
+
+        # Check total declared uncompressed size and ratios
+        declared_total = sum(info.file_size for info in infolist)
+        if declared_total > max_bytes:
+            raise ValueError("Archive uncompressed size exceeds maximum allowed safety threshold.")
+
+        compressed_total = max(1, sum(info.compress_size for info in infolist))
+        if (declared_total / compressed_total) > MAX_RATIO and declared_total > 10 * 1024 * 1024:
+            raise ValueError("Potential decompression bomb detected (suspicious compression ratio).")
+
+        for info in infolist:
+            if info.is_dir():
+                continue
+            if _is_zip_symlink(info):
+                raise ValueError("Archive contains symbolic links, which are prohibited.")
+
+            target_path = _sanitize_archive_member(dest_dir, info.filename)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with zf.open(info, "r") as src, target_path.open("wb") as dst:
+                while True:
+                    chunk = src.read(128 * 1024)
+                    if not chunk:
+                        break
+                    total_written += len(chunk)
+                    if total_written > max_bytes:
+                        raise ValueError("Extracted size exceeded maximum uncompressed archive limit.")
+                    dst.write(chunk)
+
+            extracted_files.append(target_path)
+
+    return extracted_files
+
+
+def _extract_tar_hardened(input_path: Path, dest_dir: Path) -> list[Path]:
+    max_bytes = settings.max_archive_uncompressed_mb * 1024 * 1024
+    total_written = 0
+    extracted_files: list[Path] = []
+
     with tarfile.open(input_path, "r:*") as tf:
-        for member in tf.getmembers():
-            _safe_member_path(extract_dir, member.name)
+        members = tf.getmembers()
+        if len(members) > settings.max_archive_entries:
+            raise ValueError(f"Archive exceeds maximum entry count of {settings.max_archive_entries}.")
+
+        for member in members:
+            if member.isdir():
+                continue
             if member.issym() or member.islnk():
-                raise ValueError("Archives containing symbolic or hard links are not supported.")
-        tf.extractall(extract_dir)
+                raise ValueError("Archives containing symbolic or hard links are prohibited.")
+            if member.isdev() or member.ischr() or member.isblk() or member.isfifo():
+                raise ValueError("Archive contains special device entries, which are prohibited.")
+
+            target_path = _sanitize_archive_member(dest_dir, member.name)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
+            f = tf.extractfile(member)
+            if f is None:
+                continue
+
+            with f, target_path.open("wb") as dst:
+                while True:
+                    chunk = f.read(128 * 1024)
+                    if not chunk:
+                        break
+                    total_written += len(chunk)
+                    if total_written > max_bytes:
+                        raise ValueError("Extracted size exceeded maximum uncompressed archive limit.")
+                    dst.write(chunk)
+
+            extracted_files.append(target_path)
+
+    return extracted_files
+
+
+def _extract_7z_hardened(input_path: Path, dest_dir: Path) -> list[Path]:
+    if py7zr is None:
+        raise RuntimeError("7Z extraction requires the py7zr package.")
+
+    max_bytes = settings.max_archive_uncompressed_mb * 1024 * 1024
+    extracted_files: list[Path] = []
+
+    with py7zr.SevenZipFile(input_path, "r") as archive:
+        names = archive.getnames()
+        if len(names) > settings.max_archive_entries:
+            raise ValueError(f"Archive exceeds maximum entry count of {settings.max_archive_entries}.")
+
+        for name in names:
+            _sanitize_archive_member(dest_dir, name)
+
+        archive.extractall(path=dest_dir)
+
+    total_size = 0
+    for p in sorted(dest_dir.rglob("*")):
+        if p.is_file():
+            size = p.stat().st_size
+            total_size += size
+            if total_size > max_bytes:
+                raise ValueError("Extracted size exceeded maximum uncompressed archive limit.")
+            extracted_files.append(p)
+
+    return extracted_files
+
+
+def _extract_rar_hardened(input_path: Path, dest_dir: Path) -> list[Path]:
+    if rarfile is None:
+        raise RuntimeError("RAR extraction requires the rarfile package.")
+
+    max_bytes = settings.max_archive_uncompressed_mb * 1024 * 1024
+    extracted_files: list[Path] = []
+
+    try:
+        with rarfile.RarFile(input_path) as archive:
+            infolist = archive.infolist()
+            if len(infolist) > settings.max_archive_entries:
+                raise ValueError(f"Archive exceeds maximum entry count of {settings.max_archive_entries}.")
+
+            for info in infolist:
+                if info.isdir():
+                    continue
+                target_path = _sanitize_archive_member(dest_dir, info.filename)
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+
+                with archive.open(info) as src, target_path.open("wb") as dst:
+                    written = 0
+                    while True:
+                        chunk = src.read(128 * 1024)
+                        if not chunk:
+                            break
+                        written += len(chunk)
+                        if written > max_bytes:
+                            raise ValueError("Extracted size exceeded maximum uncompressed archive limit.")
+                        dst.write(chunk)
+                extracted_files.append(target_path)
+
+    except rarfile.RarCannotExec as exc:
+        raise RuntimeError("RAR extraction requires an unrar or 7-Zip executable available on the system PATH.") from exc
+
+    return extracted_files
 
 
 def extract_archive(input_path: Path, out_dir: Path) -> list[Path]:
+    """Safely extracts a supported archive into an isolated subdirectory."""
     lower = input_path.name.lower()
     stem = archive_stem(input_path)
     extract_dir = out_dir / f"{stem}-extracted"
     extract_dir.mkdir(parents=True, exist_ok=True)
 
     if lower.endswith(".zip"):
-        _extract_zip(input_path, extract_dir)
+        extracted = _extract_zip_hardened(input_path, extract_dir)
     elif lower.endswith(".7z"):
-        if py7zr is None:
-            raise RuntimeError("7Z extraction requires py7zr. Install Kiwi dependencies again.")
-        with py7zr.SevenZipFile(input_path, "r") as archive:
-            for name in archive.getnames():
-                _safe_member_path(extract_dir, name)
-            archive.extractall(path=extract_dir)
+        extracted = _extract_7z_hardened(input_path, extract_dir)
     elif lower.endswith(".rar"):
-        if rarfile is None:
-            raise RuntimeError("RAR extraction requires rarfile plus an UnRAR/7-Zip backend.")
-        try:
-            with rarfile.RarFile(input_path) as archive:
-                for name in archive.namelist():
-                    _safe_member_path(extract_dir, name)
-                archive.extractall(path=extract_dir)
-        except rarfile.RarCannotExec as exc:
-            raise RuntimeError("RAR extraction needs an unrar/7-Zip backend installed and available on PATH.") from exc
+        extracted = _extract_rar_hardened(input_path, extract_dir)
     elif lower.endswith((".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz")):
-        _extract_tar(input_path, extract_dir)
+        extracted = _extract_tar_hardened(input_path, extract_dir)
     else:
-        raise ValueError(f"Unsupported archive format: {input_path.name}")
+        raise ValueError(f"Unsupported archive format: '{input_path.name}'.")
 
-    extracted = sorted(p for p in extract_dir.rglob("*") if p.is_file())
     if not extracted:
         raise ValueError("The archive contains no files to extract.")
 

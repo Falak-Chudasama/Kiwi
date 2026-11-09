@@ -38,20 +38,24 @@ def _soffice() -> str:
         [
             r"C:\Program Files\LibreOffice\program\soffice.exe",
             r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+            r"%LOCALAPPDATA%\Programs\LibreOffice\program\soffice.exe",
         ],
     ) or ""
 
 
 def _pandoc() -> str:
     return command_path(
-        "pandoc",
-        [r"C:\Program Files\Pandoc\pandoc.exe"],
+        settings.pandoc_bin,
+        [
+            r"C:\Program Files\Pandoc\pandoc.exe",
+            r"%LOCALAPPDATA%\Pandoc\pandoc.exe",
+        ],
     ) or ""
 
 
 def _ffmpeg() -> str:
     return command_path(
-        "ffmpeg",
+        settings.ffmpeg_bin,
         [
             r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
             r"C:\ffmpeg\bin\ffmpeg.exe",
@@ -529,7 +533,8 @@ def convert_any(input_path: Path, target_ext: str, out_dir: Path) -> list[Path]:
         return [_image_to_document(input_path, target_ext, out_dir)]
 
     # Archive repackaging is useful when the container itself is the target.
-    if source_ext in {"zip", "7z", "tar", "tar.gz", "tgz", "tar.bz2", "tbz2", "tar.xz", "txz"} and target_ext in {"zip", "7z", "tar"}:
+    from app.core.formats import ARCHIVE_INPUT_EXTENSIONS, ARCHIVE_OUTPUT_EXTENSIONS
+    if source_ext in ARCHIVE_INPUT_EXTENSIONS and target_ext in ARCHIVE_OUTPUT_EXTENSIONS:
         return [_archive_convert(input_path, target_ext, out_dir)]
 
     # Audio/video.
@@ -551,6 +556,14 @@ def convert_any(input_path: Path, target_ext: str, out_dir: Path) -> list[Path]:
     if target_ext == "md" and source_ext in MARKDOWN_SOURCE_EXTENSIONS and source_ext not in TEXT_DOCUMENTS:
         output = out_dir / f"{input_path.stem}.md"
         return [documents.convert_to_markdown_with_markitdown(input_path, output)]
+
+    # Spreadsheets to DOCX / Word processor formats semantic bridge
+    if source_ext in SPREADSHEETS and target_ext in {"docx", "doc", "odt", "rtf"}:
+        docx_output = out_dir / f"{input_path.stem}.docx"
+        docx_result = office_engine.spreadsheet_to_docx_semantic(input_path, docx_output)
+        if target_ext == "docx":
+            return [docx_result]
+        return [_office_convert(docx_result, target_ext, out_dir)]
 
     # PPTX <-> DOCX is a cross-document-family conversion: LibreOffice has
     # no direct filter for it (Impress cannot "save as" a Writer document,

@@ -34,6 +34,7 @@ see `validate_office_output`.
 """
 from __future__ import annotations
 
+import csv
 import shutil
 import tempfile
 import uuid
@@ -572,16 +573,120 @@ def docx_to_pptx_semantic(input_path: Path, output_path: Path) -> Path:
     return validate_office_output(output_path, "pptx", engine="kiwi-semantic-bridge")
 
 
+def spreadsheet_to_docx_semantic(input_path: Path, output_path: Path) -> Path:
+    """Converts a spreadsheet (XLSX, XLS, ODS, CSV) into a clean, styled Word document
+    with tables preserving cell content, headers, and multiple worksheets."""
+    from docx import Document
+    from docx.shared import Inches, Pt
+
+    source_ext = input_path.suffix.lower().lstrip(".")
+    doc = Document()
+
+    # Configure comfortable margins
+    for section in doc.sections:
+        section.top_margin = Inches(0.8)
+        section.bottom_margin = Inches(0.8)
+        section.left_margin = Inches(0.8)
+        section.right_margin = Inches(0.8)
+
+    with tempfile.TemporaryDirectory(prefix="kiwi-sheet2docx-") as tmp:
+        tmp_dir = Path(tmp)
+        xlsx_path = input_path
+
+        # If XLS or ODS, convert to XLSX first via same-family LibreOffice if available
+        if source_ext in {"xls", "ods"}:
+            if not can_convert_directly(source_ext, "xlsx"):
+                raise KiwiConversionError(f"Converting .{source_ext} requires LibreOffice to parse.")
+            xlsx_path = office_convert_same_family(input_path, "xlsx", tmp_dir)
+
+        if source_ext == "csv":
+            rows: list[list[str]] = []
+            encodings = ["utf-8-sig", "utf-8", "latin-1", "cp1252"]
+            for enc in encodings:
+                try:
+                    with open(input_path, "r", encoding=enc, newline="") as fp:
+                        sample = fp.read(4096)
+                        fp.seek(0)
+                        try:
+                            dialect = csv.Sniffer().sniff(sample)
+                            reader = csv.reader(fp, dialect)
+                        except Exception:
+                            reader = csv.reader(fp)
+                        rows = [
+                            [str(cell or "").strip() for cell in row]
+                            for row in reader
+                            if any(str(cell or "").strip() for cell in row)
+                        ]
+                    break
+                except UnicodeDecodeError:
+                    continue
+
+            title = input_path.stem.replace("_", " ").title()
+            doc.add_heading(title, level=1)
+            if rows:
+                cols_count = max(len(r) for r in rows)
+                cols_count = min(cols_count, 64)
+                display_rows = rows[:5000]
+                table = doc.add_table(rows=len(display_rows), cols=cols_count)
+                table.style = "Table Grid"
+                for r_idx, row_vals in enumerate(display_rows):
+                    for c_idx in range(cols_count):
+                        val = row_vals[c_idx] if c_idx < len(row_vals) else ""
+                        cell = table.cell(r_idx, c_idx)
+                        cell.text = val
+                        if r_idx == 0:
+                            for paragraph in cell.paragraphs:
+                                for run in paragraph.runs:
+                                    run.font.bold = True
+                if len(rows) > 5000:
+                    doc.add_paragraph(f"[Truncated: Document contains {len(rows)} rows; first 5000 rows exported.]")
+        else:
+            import openpyxl
+            wb = openpyxl.load_workbook(str(xlsx_path), data_only=True)
+            for sheet_idx, sheet in enumerate(wb.worksheets):
+                if sheet_idx > 0:
+                    doc.add_page_break()
+                doc.add_heading(sheet.title, level=1)
+
+                raw_rows = list(sheet.iter_rows(values_only=True))
+                rows = [
+                    [str(c) if c is not None else "" for c in row]
+                    for row in raw_rows
+                    if any(c is not None and str(c).strip() != "" for c in row)
+                ]
+                if rows:
+                    cols_count = max(len(r) for r in rows)
+                    cols_count = min(cols_count, 64)
+                    display_rows = rows[:5000]
+                    table = doc.add_table(rows=len(display_rows), cols=cols_count)
+                    table.style = "Table Grid"
+                    for r_idx, row_vals in enumerate(display_rows):
+                        for c_idx in range(cols_count):
+                            val = row_vals[c_idx] if c_idx < len(row_vals) else ""
+                            cell = table.cell(r_idx, c_idx)
+                            cell.text = val
+                            if r_idx == 0:
+                                for paragraph in cell.paragraphs:
+                                    for run in paragraph.runs:
+                                        run.font.bold = True
+                    if len(rows) > 5000:
+                        doc.add_paragraph(f"[Truncated: Sheet contains {len(rows)} rows; first 5000 rows exported.]")
+
+        doc.save(output_path)
+    return validate_office_output(output_path, "docx", engine="kiwi-semantic-bridge")
+
+
 # ---------------------------------------------------------------------------
 # Public entry point used by universal.convert_any / documents.py.
 # ---------------------------------------------------------------------------
 
-# Cross-family pairs Kiwi has a real semantic bridge for. Anything else
-# cross-family (e.g. xlsx -> pptx) has no bridge yet and should be reported
-# as unsupported rather than silently attempted.
 _SEMANTIC_BRIDGES = {
     ("pptx", "docx"): pptx_to_docx_semantic,
     ("docx", "pptx"): docx_to_pptx_semantic,
+    ("xlsx", "docx"): spreadsheet_to_docx_semantic,
+    ("xls", "docx"): spreadsheet_to_docx_semantic,
+    ("ods", "docx"): spreadsheet_to_docx_semantic,
+    ("csv", "docx"): spreadsheet_to_docx_semantic,
 }
 
 

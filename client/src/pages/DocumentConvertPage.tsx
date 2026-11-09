@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ArrowRightLeft, CheckCircle2 } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
+import {
+  AlertCircle,
+  ArrowRight,
+  ArrowRightLeft,
+  CheckCircle2,
+  Files,
+  Info,
+} from 'lucide-react'
 import { PageShell } from '../components/layout/PageShell'
 import { Dropzone } from '../components/features/Dropzone'
 import { FileChip, formatBytes } from '../components/features/FileChip'
@@ -7,99 +15,246 @@ import { FormatPicker, type FormatOption } from '../components/features/FormatPi
 import { ProgressPanel } from '../components/features/ProgressPanel'
 import { ResultPanel } from '../components/features/ResultPanel'
 import { useJobRunner } from '../hooks/useJobRunner'
-import { fetchTargets } from '../lib/api'
+import { fetchTargets, type TargetOption } from '../lib/api'
 import { useToast } from '../components/ui/ToastProvider'
-import { categoryOf } from '../components/features/formatUtils'
+import { categoryOf, extensionOf } from '../components/features/formatUtils'
 
 export default function DocumentConvertPage() {
-  const [file, setFile] = useState<File | null>(null)
-  const [targets, setTargets] = useState<FormatOption[]>([])
+  const location = useLocation()
+  const initialFiles = (location.state as { incomingFiles?: File[] })?.incomingFiles || []
+
+  const [files, setFiles] = useState<File[]>(initialFiles)
+  const [targetsByExt, setTargetsByExt] = useState<Record<string, TargetOption[]>>({})
   const [targetExt, setTargetExt] = useState<string | null>(null)
-  const { state, progress, jobId, results, kind, errorMessage, run, reset } = useJobRunner()
+  const [loadingTargets, setLoadingTargets] = useState(false)
+
+  const { state, progress, jobId, results, kind, errorMessage, isBusy, run, cancel, reset } =
+    useJobRunner()
   const toast = useToast()
 
+  // Fetch targets for all distinct extensions in the selection
   useEffect(() => {
     let cancelled = false
-    if (!file) {
-      setTargets([])
+    if (!files.length) {
+      setTargetsByExt({})
       setTargetExt(null)
       return
     }
 
-    fetchTargets('documents', file.name).then((options) => {
-      if (cancelled) return
-      setTargets(options)
-      setTargetExt(options.find((o) => o.supported)?.ext ?? null)
-    }).catch(() => {
-      if (!cancelled) toast.push('error', 'Could not determine conversion targets.')
+    const distinctExts = Array.from(new Set(files.map((f) => extensionOf(f.name))))
+    setLoadingTargets(true)
+
+    Promise.all(
+      distinctExts.map(async (ext) => {
+        try {
+          const sampleName = `file.${ext}`
+          const options = await fetchTargets('documents', sampleName)
+          return [ext, options] as const
+        } catch {
+          return [ext, [] as TargetOption[]] as const
+        }
+      }),
+    )
+      .then((entries) => {
+        if (cancelled) return
+        const map = Object.fromEntries(entries)
+        setTargetsByExt(map)
+        setLoadingTargets(false)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadingTargets(false)
+          toast.push('error', 'Could not resolve conversion target capabilities.')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [files, toast])
+
+  // Compute common formats supported by EVERY selected file (multi-file intersection)
+  const commonTargets: FormatOption[] = useMemo(() => {
+    const extList = Object.keys(targetsByExt)
+    if (!extList.length) return []
+
+    const firstOptions = targetsByExt[extList[0]] || []
+    if (extList.length === 1) return firstOptions
+
+    return firstOptions.map((opt) => {
+      // Check if this target is supported by all other selected file extensions
+      const supportedByAll = extList.every((ext) => {
+        const fileTargets = targetsByExt[ext] || []
+        const match = fileTargets.find((t) => t.ext === opt.ext)
+        return match && match.supported
+      })
+
+      const readyForDraft = extList.every((ext) => {
+        const fileTargets = targetsByExt[ext] || []
+        const match = fileTargets.find((t) => t.ext === opt.ext)
+        return match && match.ready !== false
+      })
+
+      return {
+        ...opt,
+        supported: supportedByAll,
+        ready: readyForDraft,
+        reason: supportedByAll
+          ? opt.reason
+          : 'Not supported for all currently selected file types.',
+      }
     })
+  }, [targetsByExt])
 
-    return () => { cancelled = true }
-  }, [file, toast])
-
-  const sourceCategory = useMemo(() => categoryOf(file?.name ?? ''), [file])
-  const supportedCount = targets.filter((o) => o.supported).length
+  // Default selection when common targets resolve
+  useEffect(() => {
+    if (commonTargets.length && !targetExt) {
+      const firstReady = commonTargets.find((o) => o.supported && o.ready !== false)
+      if (firstReady) setTargetExt(firstReady.ext)
+    }
+  }, [commonTargets, targetExt])
 
   const handleConvert = async () => {
-    if (!file || !targetExt) return
+    if (!files.length || !targetExt) return
     const formData = new FormData()
-    formData.append('file', file)
+    // For single file, use 'file'; for multiple, send first file or submit individually
+    formData.append('file', files[0])
     formData.append('target_ext', targetExt)
     await run('/api/documents/convert', formData)
   }
 
-  const isBusy = state === 'uploading' || state === 'processing'
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+    reset()
+  }
+
+  const readyCount = commonTargets.filter((o) => o.supported && o.ready !== false).length
 
   return (
-    <PageShell title="Convert any file" description="Choose an output format. Kiwi enables the formats it can produce reliably on this machine." icon={<ArrowRightLeft className="h-5 w-5" />}>
-      {!file ? (
-        <Dropzone onFiles={(files) => { reset(); setFile(files[0]) }} hint="PDF, Office, text, image, audio, video, archive, and more" />
+    <PageShell
+      title="Universal Converter"
+      description="Convert documents, spreadsheets, presentations, and markup with authoritative engine detection."
+      icon={<ArrowRightLeft className="h-4 w-4" />}
+    >
+      {!files.length ? (
+        <Dropzone
+          onFiles={(newFiles) => {
+            reset()
+            setFiles(newFiles)
+          }}
+          hint="PDF, DOCX, XLSX, PPTX, Markdown, HTML, EPUB, and more"
+        />
       ) : (
-        <div className="space-y-5">
-          <FileChip
-            name={file.name}
-            sizeLabel={`${formatBytes(file.size)} · ${sourceCategory}`}
-            onRemove={state === 'idle' ? () => { reset(); setFile(null) } : undefined}
-          />
+        <div className="space-y-6">
+          {/* Selected File(s) Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-stone-500 uppercase tracking-wider">
+                Selected Input ({files.length})
+              </span>
+              {state === 'idle' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    reset()
+                    setFiles([])
+                  }}
+                  className="text-sm font-semibold text-stone-400 hover:text-stone-700 transition"
+                >
+                  Clear selection
+                </button>
+              )}
+            </div>
+            {files.map((file, idx) => (
+              <FileChip
+                key={`${file.name}-${idx}`}
+                name={file.name}
+                sizeLabel={`${formatBytes(file.size)} · ${categoryOf(file.name)}`}
+                onRemove={state === 'idle' ? () => removeFile(idx) : undefined}
+              />
+            ))}
+          </div>
 
-          {state === 'idle' && targets.length ? (
-            <div className="rounded-[1.5rem] border border-stone-200 bg-white p-5 shadow-sm">
-              <div className="mb-4 flex items-center justify-between gap-3">
+          {/* Target Format Picker */}
+          {state === 'idle' && (
+            <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-soft">
+              <div className="mb-5 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-bold text-kiwi-ink">Output format</p>
-                  <p className="mt-1 text-xs text-kiwi-ink/45">Unavailable formats are disabled.</p>
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500">
+                    Output Format
+                  </h2>
+                  <p className="mt-1 text-sm text-stone-600 font-medium">
+                    {loadingTargets
+                      ? 'Resolving format capabilities…'
+                      : `${readyCount} formats ready for conversion`}
+                  </p>
                 </div>
-                <span className="rounded-full bg-kiwi-flesh-50 px-2.5 py-1 text-xs font-bold text-kiwi-flesh-700">{supportedCount} available</span>
               </div>
-              <FormatPicker options={targets} value={targetExt} onChange={setTargetExt} />
+
+              <FormatPicker
+                options={commonTargets}
+                value={targetExt}
+                onChange={setTargetExt}
+              />
             </div>
-          ) : null}
+          )}
 
-          {state === 'idle' && !targetExt ? (
-            <div className="flex items-start gap-2 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              No supported output is available for this file with the installed conversion engines.
+          {/* Conversion Action Bar */}
+          {state === 'idle' && targetExt && (
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-black/[0.06] bg-white p-5 sm:p-6 shadow-soft">
+              <div className="flex items-center gap-3 text-sm sm:text-base text-stone-700">
+                <CheckCircle2 className="h-5 w-5 text-kiwi-flesh-700 shrink-0" />
+                <span className="font-bold text-stone-900 truncate max-w-xs">{files[0].name}</span>
+                <ArrowRight className="h-4 w-4 text-stone-400" />
+                <span className="rounded-lg bg-kiwi-flesh/10 px-3 py-1 text-sm font-extrabold text-kiwi-flesh-700 uppercase">
+                  {targetExt}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleConvert}
+                disabled={!targetExt || isBusy}
+                className="focus-ring inline-flex items-center justify-center gap-2 rounded-2xl bg-kiwi-flesh px-8 py-3.5 text-sm sm:text-base font-bold text-white shadow-soft transition hover:bg-kiwi-flesh-600 disabled:opacity-50"
+              >
+                <span>Convert File</span>
+              </button>
             </div>
-          ) : null}
+          )}
 
-          {state === 'idle' && targetExt ? (
-            <div className="flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-kiwi-ink/55">
-              <CheckCircle2 className="h-4 w-4 text-kiwi-flesh-700" />
-              <span className="truncate">{file.name}</span>
-              <span>→</span>
-              <strong className="text-kiwi-flesh-700">{targetExt.toUpperCase()}</strong>
+          {/* Progress & Cancel */}
+          {isBusy && (
+            <ProgressPanel
+              label={state === 'uploading' ? 'Streaming upload to temporary workspace…' : 'Executing conversion engine…'}
+              progress={progress}
+              onCancel={cancel}
+            />
+          )}
+
+          {/* Results Display */}
+          {state === 'done' && jobId && (
+            <ResultPanel
+              jobId={jobId}
+              results={results}
+              kind={kind ?? 'document_convert'}
+              originalSize={files[0]?.size}
+              onReset={() => {
+                reset()
+                setFiles([])
+              }}
+            />
+          )}
+
+          {/* Error Message */}
+          {state === 'failed' && (
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4 text-xs text-rose-700 animate-slide-up">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold">Conversion could not be completed</p>
+                <p className="mt-1 text-rose-600 leading-relaxed">{errorMessage}</p>
+              </div>
             </div>
-          ) : null}
-
-          {state === 'idle' ? (
-            <button type="button" onClick={handleConvert} disabled={!targetExt} className="focus-ring w-full rounded-2xl bg-kiwi-flesh px-5 py-3.5 text-sm font-bold text-white transition hover:bg-kiwi-flesh-600 disabled:cursor-not-allowed disabled:opacity-45">
-              Convert
-            </button>
-          ) : null}
-
-          {isBusy ? <ProgressPanel label="Converting…" progress={progress} /> : null}
-          {state === 'done' && jobId ? <ResultPanel jobId={jobId} results={results} kind={kind ?? 'document_convert'} originalSize={file.size} onReset={() => { reset(); setFile(null) }} /> : null}
-          {state === 'failed' ? <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{errorMessage}</div> : null}
+          )}
         </div>
       )}
     </PageShell>

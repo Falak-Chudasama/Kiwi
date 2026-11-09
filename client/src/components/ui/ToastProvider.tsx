@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { AlertCircleIcon, CheckCircleIcon, CloseIcon } from './icons'
 
 type ToastKind = 'success' | 'error' | 'info'
@@ -22,9 +22,9 @@ export function useToast() {
 }
 
 const iconByKind: Record<ToastKind, ReactNode> = {
-  success: <CheckCircleIcon className="h-4.5 w-4.5 text-kiwi-flesh" />,
-  error: <AlertCircleIcon className="h-4.5 w-4.5 text-red-500" />,
-  info: <AlertCircleIcon className="h-4.5 w-4.5 text-kiwi-zest-600" />,
+  success: <CheckCircleIcon className="h-4 w-4 text-emerald-600 shrink-0" />,
+  error: <AlertCircleIcon className="h-4 w-4 text-rose-600 shrink-0" />,
+  info: <AlertCircleIcon className="h-4 w-4 text-kiwi-flesh-700 shrink-0" />,
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -43,24 +43,30 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [dismiss],
   )
 
+  const contextValue = useMemo(() => ({ push }), [push])
+
   return (
-    <ToastContext.Provider value={{ push }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
-      <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex w-full max-w-sm flex-col gap-2">
+      <div
+        className="pointer-events-none fixed bottom-5 right-5 z-[70] flex w-full max-w-sm flex-col gap-2.5 px-4 sm:px-0"
+        aria-live="polite"
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="pointer-events-auto flex items-start gap-2.5 rounded-2xl border border-kiwi-shell-50 bg-white px-4 py-3 text-sm text-kiwi-ink shadow-lift animate-slide-up"
+            role="alert"
+            className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-black/[0.06] bg-white/95 px-4 py-3 text-sm text-stone-900 shadow-lift backdrop-blur-md animate-slide-up"
           >
             {iconByKind[toast.kind]}
-            <span className="flex-1">{toast.message}</span>
+            <span className="flex-1 text-xs font-medium leading-relaxed">{toast.message}</span>
             <button
               type="button"
               onClick={() => dismiss(toast.id)}
-              aria-label="Dismiss"
-              className="text-kiwi-ink/40 transition hover:text-kiwi-ink"
+              aria-label="Dismiss notice"
+              className="rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
             >
-              <CloseIcon className="h-3.5 w-3.5" />
+              <CloseIcon className="h-3 w-3" />
             </button>
           </div>
         ))}

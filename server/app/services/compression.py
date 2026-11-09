@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import io
 import shutil
+import zipfile
 from enum import Enum
 from pathlib import Path
 
 import fitz
+import pikepdf
 from PIL import Image
 
 from app.core.config import settings
@@ -30,11 +33,11 @@ IMAGE_SCALE_BY_LEVEL = {
     CompressionLevel.HIGH: 0.78,
     CompressionLevel.EXTREME: 0.62,
 }
-PDF_DPI_BY_LEVEL = {
-    CompressionLevel.LOW: 150,
-    CompressionLevel.MEDIUM: 120,
-    CompressionLevel.HIGH: 96,
-    CompressionLevel.EXTREME: 72,
+ZIP_DEFLATE_LEVEL_BY_LEVEL = {
+    CompressionLevel.LOW: 5,
+    CompressionLevel.MEDIUM: 7,
+    CompressionLevel.HIGH: 9,
+    CompressionLevel.EXTREME: 9,
 }
 GHOSTSCRIPT_PRESET_BY_LEVEL = {
     CompressionLevel.LOW: "/printer",
@@ -45,14 +48,6 @@ GHOSTSCRIPT_PRESET_BY_LEVEL = {
 
 
 def _oxipng_optimize_in_place(png_path: Path, level: CompressionLevel) -> None:
-    """Run a final lossless pass with oxipng on top of Pillow's encode.
-
-    oxipng re-derives the optimal PNG filter/deflate strategy per scanline
-    and typically shaves another 5-20% off Pillow's already-optimized
-    output at zero quality cost. It's a Rust binary shipped as prebuilt
-    wheels, so this never requires a compiler on the user's machine. If the
-    package isn't installed, compression still works via Pillow alone.
-    """
     try:
         import oxipng
     except ImportError:
@@ -66,22 +61,23 @@ def _oxipng_optimize_in_place(png_path: Path, level: CompressionLevel) -> None:
     try:
         oxipng.optimize(str(png_path), level=effort_by_level.get(level, 3))
     except Exception:
-        # Never let a best-effort optimization pass break compression.
         pass
 
 
 def _never_larger(original: Path, candidate: Path) -> Path:
+    """Ensures Kiwi never returns an output file larger than the input."""
     if candidate.exists() and candidate.stat().st_size < original.stat().st_size:
         return candidate
     candidate.unlink(missing_ok=True)
-    fallback = candidate
-    shutil.copy2(original, fallback)
-    return fallback
+    shutil.copy2(original, candidate)
+    return candidate
 
 
 def compress_image(input_path: Path, out_dir: Path, level: CompressionLevel) -> Path:
     ext = input_path.suffix.lower().lstrip(".")
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{input_path.stem}_compressed.{ext}"
+
     image = Image.open(input_path)
     try:
         scale = IMAGE_SCALE_BY_LEVEL[level]
@@ -104,11 +100,7 @@ def compress_image(input_path: Path, out_dir: Path, level: CompressionLevel) -> 
                 rgba = image.convert("RGBA")
                 if level in (CompressionLevel.HIGH, CompressionLevel.EXTREME):
                     colors = 192 if level == CompressionLevel.HIGH else 128
-                    # RGBA images can only be quantized with FASTOCTREE (2) or
-                    # libimagequant (3) in Pillow; MEDIANCUT/MAXCOVERAGE only work
-                    # on non-alpha images and raise ValueError on RGBA input.
                     if rgba.getchannel("A").getextrema() == (255, 255):
-                        # Fully opaque: drop alpha so MEDIANCUT (better quality) applies.
                         rgba = rgba.convert("RGB").quantize(colors=colors, method=Image.Quantize.MEDIANCUT).convert("RGBA")
                     else:
                         rgba = rgba.quantize(colors=colors, method=Image.Quantize.FASTOCTREE)
@@ -121,37 +113,26 @@ def compress_image(input_path: Path, out_dir: Path, level: CompressionLevel) -> 
             else:
                 image.convert("RGB").save(output_path, quality=quality)
         except (ValueError, OSError):
-            # Any format-specific quirk (unsupported quantize mode, missing
-            # codec, exotic color mode, etc.) falls back to a safe re-encode
-            # so compression never hard-fails a supported image format.
             output_path.unlink(missing_ok=True)
             image.convert("RGB").save(output_path)
     finally:
         image.close()
-    return _never_larger(input_path, output_path)
 
-
-def _compress_pdf_via_rasterize(input_path: Path, out_dir: Path, level: CompressionLevel) -> Path:
-    output_path = out_dir / f"{input_path.stem}_compressed.pdf"
-    dpi = PDF_DPI_BY_LEVEL[level]
-    source = fitz.open(input_path)
-    result = fitz.open()
-    matrix = fitz.Matrix(dpi / 72, dpi / 72)
-    try:
-        for page in source:
-            pixmap = page.get_pixmap(matrix=matrix, colorspace=fitz.csRGB, alpha=False)
-            img_bytes = pixmap.tobytes("jpeg", jpg_quality=IMAGE_QUALITY_BY_LEVEL[level])
-            new_page = result.new_page(width=page.rect.width, height=page.rect.height)
-            new_page.insert_image(new_page.rect, stream=img_bytes)
-        result.save(output_path, garbage=4, deflate=True, clean=True)
-    finally:
-        result.close()
-        source.close()
     return _never_larger(input_path, output_path)
 
 
 def compress_pdf(input_path: Path, out_dir: Path, level: CompressionLevel) -> Path:
+    """Non-destructive PDF compression.
+
+    Tries Ghostscript vector/font optimization first.
+    If Ghostscript is unavailable, performs non-destructive pikepdf/PyMuPDF
+    stream compression and object deduplication.
+    Never silently rasterizes pages to destroy text/vectors/forms/accessibility.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{input_path.stem}_compressed.pdf"
+
+    # 1. Try Ghostscript if available
     gs = command_path(
         settings.ghostscript_bin,
         [
@@ -174,37 +155,92 @@ def compress_pdf(input_path: Path, out_dir: Path, level: CompressionLevel) -> Pa
         ]
         try:
             run_command(args, timeout=240)
-            return _never_larger(input_path, output_path)
+            if output_path.exists() and output_path.stat().st_size > 0:
+                return _never_larger(input_path, output_path)
         except Exception:
-            pass
-    return _compress_pdf_via_rasterize(input_path, out_dir, level)
+            output_path.unlink(missing_ok=True)
+
+    # 2. Non-destructive stream and resource optimization via pikepdf
+    try:
+        with pikepdf.open(input_path) as pdf:
+            pdf.remove_unreferenced_resources()
+            pdf.save(
+                output_path,
+                compress_streams=True,
+                object_stream_mode=pikepdf.ObjectStreamMode.generate,
+            )
+        if output_path.exists() and output_path.stat().st_size > 0:
+            return _never_larger(input_path, output_path)
+    except Exception:
+        output_path.unlink(missing_ok=True)
+
+    # 3. Non-destructive PyMuPDF clean/deflate pass
+    try:
+        doc = fitz.open(input_path)
+        try:
+            doc.save(output_path, garbage=4, deflate=True, clean=True)
+            return _never_larger(input_path, output_path)
+        finally:
+            doc.close()
+    except Exception:
+        output_path.unlink(missing_ok=True)
+        shutil.copy2(input_path, output_path)
+        return output_path
+
+
+def _optimize_inner_media(data: bytes, filename: str, level: CompressionLevel) -> bytes:
+    """Best-effort optimization of embedded images inside an Office document."""
+    lower = filename.lower()
+    if not (lower.endswith(".jpg") or lower.endswith(".jpeg") or lower.endswith(".png")):
+        return data
+
+    try:
+        img = Image.open(io.BytesIO(data))
+        quality = 75 if level == CompressionLevel.HIGH else 60
+        out_buf = io.BytesIO()
+        if lower.endswith((".jpg", ".jpeg")):
+            img.convert("RGB").save(out_buf, format="JPEG", quality=quality, optimize=True)
+        elif lower.endswith(".png"):
+            img.save(out_buf, format="PNG", optimize=True, compress_level=9)
+        compressed_bytes = out_buf.getvalue()
+        if len(compressed_bytes) < len(data):
+            return compressed_bytes
+    except Exception:
+        pass
+    return data
 
 
 def compress_office_document(input_path: Path, out_dir: Path, level: CompressionLevel) -> Path:
+    """Repack ZIP-based Office containers with the requested compression strength,
+    optionally optimizing embedded media on HIGH/EXTREME settings.
     """
-    Repack ZIP-based Office containers. This keeps the original file type.
-    Never return a larger file.
-    """
-    import zipfile
-
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{input_path.stem}_compressed{input_path.suffix}"
+    compress_level = ZIP_DEFLATE_LEVEL_BY_LEVEL.get(level, 9)
+
     try:
         with zipfile.ZipFile(input_path, "r") as source, zipfile.ZipFile(
-            output_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+            output_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=compress_level
         ) as destination:
             for item in source.infolist():
+                data = source.read(item.filename)
+                # Optimize embedded media files on high/extreme levels
+                if level in (CompressionLevel.HIGH, CompressionLevel.EXTREME) and (
+                    "/media/" in item.filename or "\\media\\" in item.filename
+                ):
+                    data = _optimize_inner_media(data, item.filename, level)
+
                 destination.writestr(
                     item.filename,
-                    source.read(item.filename),
+                    data,
                     compress_type=zipfile.ZIP_DEFLATED,
-                    compresslevel=9,
+                    compresslevel=compress_level,
                 )
         return _never_larger(input_path, output_path)
     except Exception:
         output_path.unlink(missing_ok=True)
-        fallback = out_dir / f"{input_path.stem}_compressed{input_path.suffix}"
-        shutil.copy2(input_path, fallback)
-        return fallback
+        shutil.copy2(input_path, output_path)
+        return output_path
 
 
 def compress_file(input_path: Path, out_dir: Path, level: CompressionLevel) -> Path:

@@ -24,21 +24,27 @@ export function FileChip({ name, sizeLabel, onRemove }: FileChipProps) {
   const category = categoryOf(name)
   const Icon = ICONS[category]
   const ext = extensionOf(name)
+
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 shadow-[0_5px_20px_-14px_rgba(48,48,48,.3)]">
+    <div className="flex items-center gap-3.5 rounded-2xl border border-stone-200/90 bg-white px-4 py-3 shadow-xs transition hover:border-stone-300">
       <div className={`flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl border text-[10px] font-bold ${CATEGORY_CLASSES[category]}`}>
         <Icon className="h-4 w-4" />
-        {ext ? <span className="mt-0.5">{formatLabel(ext)}</span> : null}
+        {ext ? <span className="mt-0.5 leading-none uppercase">{formatLabel(ext).slice(0, 4)}</span> : null}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-kiwi-ink">{name}</p>
-        <p className="text-xs text-kiwi-ink/45">{sizeLabel}</p>
+        <p className="truncate text-sm sm:text-base font-bold text-stone-900">{name}</p>
+        <p className="text-xs sm:text-sm text-stone-500">{sizeLabel}</p>
       </div>
-      {onRemove ? (
-        <button type="button" onClick={onRemove} aria-label={`Remove ${name}`} className="focus-ring rounded-lg p-1.5 text-kiwi-ink/35 transition hover:bg-red-50 hover:text-red-500">
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${name}`}
+          className="focus-ring rounded-xl p-2 text-stone-400 transition hover:bg-rose-50 hover:text-rose-600"
+        >
           <TrashIcon className="h-4 w-4" />
         </button>
-      ) : null}
+      )}
     </div>
   )
 }

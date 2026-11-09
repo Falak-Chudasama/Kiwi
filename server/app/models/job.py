@@ -9,8 +9,11 @@ from typing import Any
 class JobStatus(str, Enum):
     QUEUED = "queued"
     PROCESSING = "processing"
+    FINALIZING = "finalizing"
     DONE = "done"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
 
 
 class JobKind(str, Enum):
@@ -57,10 +60,10 @@ class Job:
     error: str | None = None
     result_files: list[ResultFile] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
-    updated_at: float = field(default_factory=time.time)
-
-    def touch(self) -> None:
-        self.updated_at = time.time()
+    started_at: float | None = None
+    completed_at: float | None = None
+    expires_at: float | None = None
+    cancel_requested: bool = False
 
     def to_public_dict(self) -> dict[str, Any]:
         return {
@@ -70,4 +73,8 @@ class Job:
             "progress": self.progress,
             "error": self.error,
             "result_files": [item.to_public_dict() for item in self.result_files],
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "expires_at": self.expires_at,
         }

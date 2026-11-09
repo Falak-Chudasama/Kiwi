@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+import functools
+import shutil
+from dataclasses import dataclass
 from typing import Any
 
+from app.core.config import settings
+from app.core.files import command_path
+
+
+# --- Format Categories & Extensions ---
 
 DOCUMENT_OUTPUT_EXTENSIONS = [
     "pdf", "docx", "doc", "odt", "rtf", "txt", "md", "html", "htm", "epub",
@@ -22,9 +30,10 @@ VIDEO_EXTENSIONS = [
 ]
 
 ARCHIVE_INPUT_EXTENSIONS = [
-    "zip", "7z", "tar", "tar.gz", "tgz", "tar.bz2", "tbz2", "tar.xz", "txz", "rar"
+    "zip", "7z", "tar", "tar.gz", "tgz", "tar.bz2", "tbz2", "tar.xz", "txz", "rar",
 ]
 ARCHIVE_OUTPUT_EXTENSIONS = ["zip", "7z", "tar"]
+
 MEDIA_IMAGE_TARGETS = {"jpg", "jpeg", "png", "webp", "gif", "bmp"}
 RENDER_IMAGE_TARGETS = MEDIA_IMAGE_TARGETS | {"tiff", "tif", "ico", "heic", "heif"}
 
@@ -57,13 +66,6 @@ PANDOC_INPUTS = {
     "odt": "odt",
     "rtf": "rtf",
     "epub": "epub",
-    # NOTE: pptx is intentionally absent here. Pandoc can *write* pptx
-    # (see PANDOC_OUTPUTS) but its CLI does not list pptx as a readable
-    # input format (`pandoc --list-input-formats` omits it, and
-    # `pandoc --from pptx` fails with "Unknown input format pptx").
-    # Claiming it as a reader made convert_any() route pptx -> docx into a
-    # doomed Pandoc call. PPTX as a *source* now goes through
-    # app.services.office_engine's semantic bridge instead.
 }
 
 PANDOC_OUTPUTS = {
@@ -81,12 +83,35 @@ PANDOC_OUTPUTS = {
     "pptx": "pptx",
 }
 
-# Formats that markitdown (or, for PDF specifically, pymupdf4llm) can turn
-# into real structured Markdown -- headings, tables, lists -- rather than a
-# flat text dump. This is the "x -> md" side of document conversion.
 MARKDOWN_SOURCE_EXTENSIONS = {
     "pdf", "docx", "doc", "odt", "rtf", "pptx", "ppt", "odp",
     "xlsx", "xls", "ods", "csv", "html", "htm", "epub",
+}
+
+_OFFICE_TARGET_EXTS = {
+    "pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm",
+    "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp",
+}
+
+_OFFICE_SEMANTIC_BRIDGES = {
+    ("pptx", "docx"),
+    ("docx", "pptx"),
+    ("xlsx", "docx"),
+    ("xls", "docx"),
+    ("ods", "docx"),
+    ("csv", "docx"),
+    ("xlsx", "doc"),
+    ("xls", "doc"),
+    ("ods", "doc"),
+    ("csv", "doc"),
+    ("xlsx", "odt"),
+    ("xls", "odt"),
+    ("ods", "odt"),
+    ("csv", "odt"),
+    ("xlsx", "rtf"),
+    ("xls", "rtf"),
+    ("ods", "rtf"),
+    ("csv", "rtf"),
 }
 
 
@@ -138,73 +163,49 @@ def all_target_extensions() -> list[str]:
 
 
 def _command_available(name: str, candidates: list[str] | None = None) -> bool:
-    from app.core.files import command_path
-
     return bool(command_path(name, candidates or []))
 
 
-_OFFICE_TARGET_EXTS = {"pdf", "doc", "docx", "odt", "rtf", "txt", "html", "htm",
-                        "xlsx", "xls", "ods", "csv", "ppt", "pptx", "odp"}
-
-# Cross-family pairs that have a real Kiwi semantic bridge (see
-# app.services.office_engine) even though LibreOffice itself has no direct
-# filter for them. Kept as plain (source, target) tuples here rather than
-# importing office_engine (which imports python-docx/pptx at module scope)
-# so formats.py stays import-light for the capability-matrix endpoint.
-_OFFICE_SEMANTIC_BRIDGES = {("pptx", "docx"), ("docx", "pptx")}
+def _module_available(name: str) -> bool:
+    import importlib.util
+    return importlib.util.find_spec(name) is not None
 
 
-def _office_target_support(s: str, t: str, tools: dict[str, bool]) -> tuple[bool, str | None] | None:
-    """Family-aware replacement for the old blanket "LibreOffice can do any
-    office-ish target" checks. Returns None if `t` isn't an office-engine
-    target at all (caller should fall through to its next check).
-    """
-    if t not in _OFFICE_TARGET_EXTS:
-        return None
-    if (s, t) in _OFFICE_SEMANTIC_BRIDGES:
-        return True, None  # Kiwi's own bridge, no external engine required
-    # Same LibreOffice document family (or any family -> pdf/html), which
-    # LibreOffice can actually perform directly.
-    writer = {"doc", "docx", "odt", "rtf", "txt", "html", "htm"}
-    calc = {"xls", "xlsx", "ods", "csv"}
-    impress = {"ppt", "pptx", "odp"}
-    same_family = (
-        (s in writer and t in writer)
-        or (s in calc and t in calc)
-        or (s in impress and t in impress)
-        or t == "pdf"
-    )
-    if same_family:
-        return tools["libreoffice"], "Requires LibreOffice"
-    return False, "No same-family LibreOffice filter and no semantic bridge exists for this pair"
-
-
+@functools.lru_cache(maxsize=1)
 def tool_state() -> dict[str, bool]:
+    """Probes runtime availability of external tools and optional packages."""
     return {
         "libreoffice": _command_available(
-            "soffice",
+            settings.soffice_bin,
             [
                 r"C:\Program Files\LibreOffice\program\soffice.exe",
                 r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+                r"%LOCALAPPDATA%\Programs\LibreOffice\program\soffice.exe",
             ],
         ),
         "pandoc": _command_available(
-            "pandoc",
-            [r"C:\Program Files\Pandoc\pandoc.exe"],
+            settings.pandoc_bin,
+            [
+                r"C:\Program Files\Pandoc\pandoc.exe",
+                r"%LOCALAPPDATA%\Pandoc\pandoc.exe",
+            ],
         ),
         "ffmpeg": _command_available(
-            "ffmpeg",
+            settings.ffmpeg_bin,
             [
                 r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
                 r"C:\ffmpeg\bin\ffmpeg.exe",
             ],
         ),
         "tesseract": _command_available(
-            "tesseract",
-            [r"C:\Program Files\Tesseract-OCR\tesseract.exe"],
+            settings.tesseract_bin,
+            [
+                r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+            ],
         ),
         "ghostscript": _command_available(
-            "gswin64c",
+            settings.ghostscript_bin,
             [
                 r"C:\Program Files\gs\*\bin\gswin64c.exe",
                 r"C:\Program Files (x86)\gs\*\bin\gswin32c.exe",
@@ -221,20 +222,11 @@ def tool_state() -> dict[str, bool]:
     }
 
 
-def _module_available(name: str) -> bool:
-    import importlib.util
-
-    return importlib.util.find_spec(name) is not None
-
-
-# Metadata for the engine-status panel: what each engine unlocks and how to
-# install it on each OS. Ordered by how much conversion coverage each one
-# unlocks so the status panel can show the highest-impact gaps first.
 ENGINE_INFO: list[dict[str, Any]] = [
     {
         "key": "libreoffice",
         "name": "LibreOffice",
-        "unlocks": "Word/Excel/PowerPoint/OpenDocument conversion, legacy formats, PDF export",
+        "unlocks": "Word, Excel, PowerPoint, OpenDocument conversions and legacy office formats",
         "install": {
             "windows": "winget install TheDocumentFoundation.LibreOffice",
             "macos": "brew install --cask libreoffice",
@@ -244,7 +236,7 @@ ENGINE_INFO: list[dict[str, Any]] = [
     {
         "key": "pandoc",
         "name": "Pandoc",
-        "unlocks": "Markdown, HTML, EPUB, LaTeX, RST, Org, and other markup/document conversion",
+        "unlocks": "Markdown, HTML, EPUB, LaTeX, RST, Org markup conversions",
         "install": {
             "windows": "winget install --id JohnMacFarlane.Pandoc",
             "macos": "brew install pandoc",
@@ -254,7 +246,7 @@ ENGINE_INFO: list[dict[str, Any]] = [
     {
         "key": "ffmpeg",
         "name": "FFmpeg",
-        "unlocks": "Audio and video transcoding, frame/waveform image export",
+        "unlocks": "Audio/video transcoding, waveform generation, and video frame extraction",
         "install": {
             "windows": "winget install Gyan.FFmpeg",
             "macos": "brew install ffmpeg",
@@ -264,7 +256,7 @@ ENGINE_INFO: list[dict[str, Any]] = [
     {
         "key": "ghostscript",
         "name": "Ghostscript",
-        "unlocks": "High-quality PDF compression (falls back to slower page rasterization without it)",
+        "unlocks": "High-fidelity vector and font PDF compression",
         "install": {
             "windows": "winget install ArtifexSoftware.GhostScript",
             "macos": "brew install ghostscript",
@@ -274,7 +266,7 @@ ENGINE_INFO: list[dict[str, Any]] = [
     {
         "key": "tesseract",
         "name": "Tesseract OCR",
-        "unlocks": "Text extraction from scanned images and image-to-text/markdown",
+        "unlocks": "Text extraction from scanned images and image-to-text OCR",
         "install": {
             "windows": "winget install UB-Mannheim.TesseractOCR",
             "macos": "brew install tesseract",
@@ -284,7 +276,7 @@ ENGINE_INFO: list[dict[str, Any]] = [
     {
         "key": "py7zr",
         "name": "py7zr (Python package)",
-        "unlocks": "Reading and writing .7z archives",
+        "unlocks": "Reading and writing 7Z archives",
         "install": {
             "windows": "pip install py7zr",
             "macos": "pip install py7zr",
@@ -294,51 +286,11 @@ ENGINE_INFO: list[dict[str, Any]] = [
     {
         "key": "rarfile",
         "name": "rarfile (Python package)",
-        "unlocks": "Extracting .rar archives (also needs unrar or 7-Zip on PATH)",
+        "unlocks": "Extracting RAR archives (requires unrar/7-Zip)",
         "install": {
-            "windows": "pip install rarfile  (and: winget install RARLab.WinRAR)",
-            "macos": "pip install rarfile  (and: brew install rar)",
-            "linux": "pip install rarfile  (and: sudo apt install unrar)",
-        },
-    },
-    {
-        "key": "pdf2docx",
-        "name": "pdf2docx (Python package)",
-        "unlocks": "High-fidelity PDF to DOCX conversion with real tables, paragraphs, and layout",
-        "install": {
-            "windows": "pip install pdf2docx",
-            "macos": "pip install pdf2docx",
-            "linux": "pip install pdf2docx",
-        },
-    },
-    {
-        "key": "pymupdf4llm",
-        "name": "PyMuPDF4LLM (Python package)",
-        "unlocks": "Structured PDF to Markdown conversion (headings, tables, lists)",
-        "install": {
-            "windows": "pip install pymupdf4llm",
-            "macos": "pip install pymupdf4llm",
-            "linux": "pip install pymupdf4llm",
-        },
-    },
-    {
-        "key": "markitdown",
-        "name": "MarkItDown (Python package)",
-        "unlocks": "Word/PowerPoint/Excel/HTML/image to Markdown conversion",
-        "install": {
-            "windows": "pip install \"markitdown[all]\"",
-            "macos": "pip install \"markitdown[all]\"",
-            "linux": "pip install \"markitdown[all]\"",
-        },
-    },
-    {
-        "key": "oxipng",
-        "name": "oxipng (Python package)",
-        "unlocks": "Best-in-class lossless PNG compression",
-        "install": {
-            "windows": "pip install pyoxipng",
-            "macos": "pip install pyoxipng",
-            "linux": "pip install pyoxipng",
+            "windows": "pip install rarfile",
+            "macos": "pip install rarfile",
+            "linux": "pip install rarfile",
         },
     },
 ]
@@ -346,183 +298,479 @@ ENGINE_INFO: list[dict[str, Any]] = [
 
 def engine_status() -> list[dict[str, Any]]:
     tools = tool_state()
-    return [
-        {**info, "installed": tools.get(info["key"], False)}
-        for info in ENGINE_INFO
-    ]
+    return [{**info, "installed": tools.get(info["key"], False)} for info in ENGINE_INFO]
 
 
-def _document_conversion_support(source_ext: str, target_ext: str, tools: dict[str, bool]) -> tuple[bool, str | None]:
-    """Report whether convert_any(source_ext -> target_ext) will actually succeed.
+# --- Authoritative Strategy Registry ---
 
-    This mirrors app.services.universal.convert_any branch-for-branch so the
-    UI never advertises a conversion that the engine can't really perform
-    (and never hides one that it can). Each check here corresponds to the
-    exact branch convert_any takes, and to the exact tool that branch calls.
-    """
-    s = source_ext.lower()
-    t = target_ext.lower()
+@dataclass
+class StrategyOutcome:
+    supported: bool
+    ready: bool
+    status: str  # ready, requires_engine, degraded_or_lossy, content_dependent, unsupported
+    strategy: str | None = None
+    required_engine: str | None = None
+    reason: str | None = None
+    fidelity: str | None = None
+
+
+def resolve_strategy(source_ext: str, target_ext: str, tools: dict[str, bool] | None = None) -> StrategyOutcome:
+    """Authoritative strategy resolver for any (source_ext, target_ext) pair."""
+    s = source_ext.lower().lstrip(".")
+    t = target_ext.lower().lstrip(".")
 
     if s == t:
-        return False, "Same format"
+        return StrategyOutcome(
+            supported=False,
+            ready=False,
+            status="unsupported",
+            reason="Source and target formats are identical.",
+        )
 
-    # Archives: repackaging only, mirrors _archive_convert.
+    t_state = tools if tools is not None else tool_state()
+
+    # 1. Archives repackaging
     if s in ARCHIVE_INPUT_EXTENSIONS:
         if t in ARCHIVE_OUTPUT_EXTENSIONS:
-            if s == "rar" and not tools["rarfile"]:
-                return False, "RAR repackaging needs the rarfile module plus an UnRAR/7-Zip backend"
-            if s == "7z" and not tools["py7zr"]:
-                return False, "Requires py7zr to read 7Z archives"
-            if t == "7z" and not tools["py7zr"]:
-                return False, "Requires py7zr to write 7Z archives"
-            return True, None
-        return False, "Archives are package containers, not document/media formats"
+            if s == "rar" and not t_state["rarfile"]:
+                return StrategyOutcome(
+                    supported=True,
+                    ready=False,
+                    status="requires_engine",
+                    required_engine="rarfile",
+                    strategy="archive_repack",
+                    reason="Requires rarfile and unrar/7-Zip backend to extract RAR",
+                )
+            if s == "7z" and not t_state["py7zr"]:
+                return StrategyOutcome(
+                    supported=True,
+                    ready=False,
+                    status="requires_engine",
+                    required_engine="py7zr",
+                    strategy="archive_repack",
+                    reason="Requires py7zr to read 7Z archives",
+                )
+            if t == "7z" and not t_state["py7zr"]:
+                return StrategyOutcome(
+                    supported=True,
+                    ready=False,
+                    status="requires_engine",
+                    required_engine="py7zr",
+                    strategy="archive_repack",
+                    reason="Requires py7zr to write 7Z archives",
+                )
+            return StrategyOutcome(
+                supported=True,
+                ready=True,
+                status="ready",
+                strategy="archive_repack",
+                fidelity="high",
+            )
+        return StrategyOutcome(
+            supported=False,
+            ready=False,
+            status="unsupported",
+            reason="Archives are container packages, not document or media files.",
+        )
 
-    # PDF source: mirrors the "PDF paths" block in convert_any.
+    # 2. PDF sources
     if s == "pdf":
-        if t == "txt" or t == "html":
-            return True, None
-        if t == "docx" or t == "pptx":
-            return True, None
+        if t in {"txt", "html"}:
+            return StrategyOutcome(
+                supported=True,
+                ready=True,
+                status="ready",
+                strategy="text_extraction",
+                fidelity="high",
+            )
+        if t == "docx":
+            ready = t_state["pdf2docx"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="pdf2docx" if not ready else None,
+                strategy="pdf2docx_layout",
+                fidelity="high",
+            )
+        if t == "pptx":
+            return StrategyOutcome(
+                supported=True,
+                ready=True,
+                status="ready",
+                strategy="slide_generation",
+                fidelity="high",
+            )
         if t in RENDER_IMAGE_TARGETS:
-            return True, None
+            return StrategyOutcome(
+                supported=True,
+                ready=True,
+                status="ready",
+                strategy="pdf_raster_render",
+                fidelity="high",
+            )
         if t in {"csv", "xlsx", "xls", "ods"}:
-            return True, None
-        if t in {"doc", "odt", "rtf"}:
-            # Goes through an intermediate docx, then LibreOffice for legacy formats.
-            if t == "doc" or t == "odt" or t == "rtf":
-                return tools["libreoffice"], "Requires LibreOffice"
-        if t in {"ppt", "odp"}:
-            return tools["libreoffice"], "Requires LibreOffice"
+            ready = True
+            if t in {"xls", "ods"} and not t_state["libreoffice"]:
+                ready = False
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="content_dependent" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="table_extraction",
+                reason="Table extraction requires the PDF to contain structured tabular data.",
+                fidelity="content_dependent",
+            )
+        if t in {"doc", "odt", "rtf", "ppt", "odp"}:
+            ready = t_state["libreoffice"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="intermediate_office_conversion",
+                reason="Requires LibreOffice for legacy format export" if not ready else None,
+            )
         if t == "md":
-            return tools["pymupdf4llm"], "Requires PyMuPDF4LLM"
+            ready = t_state["pymupdf4llm"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="pymupdf4llm" if not ready else None,
+                strategy="structured_markdown_export",
+            )
         if t in {"epub", "tex", "rst", "org"}:
-            return tools["pymupdf4llm"] and tools["pandoc"], "Requires PyMuPDF4LLM and Pandoc"
-        return False, "No meaningful PDF representation for this target"
+            ready = t_state["pymupdf4llm"] and t_state["pandoc"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="pandoc" if not ready else None,
+                strategy="markdown_pandoc_pipeline",
+            )
+        return StrategyOutcome(
+            supported=False,
+            ready=False,
+            status="unsupported",
+            reason="No direct PDF converter exists for this target format.",
+        )
 
-    # Images: mirrors "if source_ext in IMAGE_EXTENSIONS".
+    # 3. Image sources
     if s in IMAGE_EXTENSIONS:
         if t in IMAGE_EXTENSIONS:
-            return True, None
-        # Everything else routes through _image_to_document.
+            if t == "svg":
+                return StrategyOutcome(
+                    supported=True,
+                    ready=True,
+                    status="degraded_or_lossy",
+                    strategy="raster_embed_svg",
+                    reason="Embeds raster image into SVG container; does not vectorize shapes.",
+                    fidelity="embedded_raster",
+                )
+            return StrategyOutcome(
+                supported=True,
+                ready=True,
+                status="ready",
+                strategy="pillow_reencode",
+                fidelity="high",
+            )
         if t == "pdf":
-            return True, None
-        if t in {"docx", "doc", "odt", "rtf"}:
-            if t == "docx":
-                return True, None
-            return tools["libreoffice"], "Requires LibreOffice to save as ." + t
-        if t in {"pptx", "ppt", "odp"}:
-            if t == "pptx":
-                return True, None
-            return tools["libreoffice"], "Requires LibreOffice to save as ." + t
+            return StrategyOutcome(
+                supported=True,
+                ready=True,
+                status="ready",
+                strategy="image_to_pdf",
+                fidelity="high",
+            )
+        if t in {"docx", "pptx"}:
+            return StrategyOutcome(
+                supported=True,
+                ready=True,
+                status="ready",
+                strategy="document_image_embed",
+                fidelity="high",
+            )
+        if t in {"doc", "odt", "rtf", "ppt", "odp"}:
+            ready = t_state["libreoffice"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="office_image_document",
+            )
         if t in {"txt", "md"}:
-            return tools["tesseract"], "Requires Tesseract for OCR"
+            ready = t_state["tesseract"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="tesseract" if not ready else None,
+                strategy="tesseract_ocr",
+                reason="Requires Tesseract OCR for text recognition from image" if not ready else None,
+            )
         if t in {"html", "htm"}:
-            return True, None
-        return False, "Image data has no reliable representation in this format"
+            return StrategyOutcome(
+                supported=True,
+                ready=True,
+                status="ready",
+                strategy="html_image_embed",
+            )
+        return StrategyOutcome(
+            supported=False,
+            ready=False,
+            status="unsupported",
+            reason="Image pixels cannot be converted into this format.",
+        )
 
-    # Archive repackaging when both ends are archive containers is handled
-    # above; a non-archive source never reaches an archive target here.
-
-    # Audio/video: mirrors the ffmpeg block.
+    # 4. Audio & Video sources
     if s in AUDIO_EXTENSIONS or s in VIDEO_EXTENSIONS:
+        ready = t_state["ffmpeg"]
         if t in MEDIA_IMAGE_TARGETS:
-            return tools["ffmpeg"], "Requires FFmpeg frame/waveform rendering"
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="ffmpeg" if not ready else None,
+                strategy="ffmpeg_waveform_or_frame",
+                reason="Requires FFmpeg for media rendering" if not ready else None,
+            )
         if t == "pdf":
-            return tools["ffmpeg"], "Requires FFmpeg waveform/frame rendering"
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="ffmpeg" if not ready else None,
+                strategy="ffmpeg_image_to_pdf",
+            )
         if t in AUDIO_EXTENSIONS or t in VIDEO_EXTENSIONS:
-            return tools["ffmpeg"], "Requires FFmpeg media transcoder"
-        return False, "Media requires a semantic conversion, not a normal format transcode"
+            is_black_video = s in AUDIO_EXTENSIONS and t in VIDEO_EXTENSIONS
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="degraded_or_lossy" if is_black_video else ("ready" if ready else "requires_engine"),
+                required_engine="ffmpeg" if not ready else None,
+                strategy="ffmpeg_transcode",
+                reason="Audio-to-video renders a black video stream with audio." if is_black_video else None,
+            )
+        return StrategyOutcome(
+            supported=False,
+            ready=False,
+            status="unsupported",
+            reason="Media streams require an audio or video target format.",
+        )
 
-    # Text documents: mirrors the TEXT_DOCUMENTS block, checked before the
-    # generic Pandoc bridge (source_ext in TEXT_DOCUMENTS short-circuits it).
+    # 5. Text & Code sources
     if s in TEXT_DOCUMENTS:
         if t in RENDER_IMAGE_TARGETS:
-            return True, None
+            return StrategyOutcome(
+                supported=True,
+                ready=True,
+                status="ready",
+                strategy="text_raster_render",
+            )
         if t in {"csv", "xlsx", "xls", "ods"}:
-            return True, None
+            ready = True
+            if t in {"xls", "ods"} and not t_state["libreoffice"]:
+                ready = False
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="content_dependent" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="text_to_spreadsheet",
+                reason="Parses Markdown or whitespace-delimited columns into tabular rows.",
+            )
         if t in PANDOC_OUTPUTS:
-            return tools["pandoc"], "Requires Pandoc"
+            ready = t_state["pandoc"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="pandoc" if not ready else None,
+                strategy="pandoc_text_markup",
+            )
         if t == "pdf":
-            return tools["pandoc"] or tools["libreoffice"], "Requires Pandoc or LibreOffice"
+            ready = t_state["pandoc"] and t_state["libreoffice"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="pandoc or libreoffice" if not ready else None,
+                strategy="pandoc_pdf_pipeline",
+            )
         if t in {"doc", "ppt", "odp", "xls"}:
-            return tools["libreoffice"], "Requires LibreOffice"
-        return False, "Use a document, image, or spreadsheet representation for text data"
+            ready = t_state["libreoffice"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="office_text_bridge",
+            )
+        return StrategyOutcome(
+            supported=False,
+            ready=False,
+            status="unsupported",
+            reason="No text translation engine for this target format.",
+        )
 
-    # Word-processor documents (doc/docx/odt/rtf): these are not in
-    # TEXT_DOCUMENTS, so convert_any checks the PPTX<->DOCX semantic bridge
-    # first (_office_target_support handles that), then the Pandoc bridge,
-    # then falls to the LibreOffice catch-all.
+    # 6. Word documents (doc, docx, odt, rtf)
     if s in WORD_DOCUMENTS:
         if t == "md" and s in MARKDOWN_SOURCE_EXTENSIONS:
-            return tools["markitdown"], "Requires MarkItDown"
+            ready = t_state["markitdown"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="markitdown" if not ready else None,
+                strategy="markitdown_structural_export",
+            )
         if (s, t) in _OFFICE_SEMANTIC_BRIDGES:
-            return _office_target_support(s, t, tools)
-        if t in PANDOC_OUTPUTS and s in PANDOC_INPUTS:
-            return tools["pandoc"], "Requires Pandoc"
-        office = _office_target_support(s, t, tools)
-        if office is not None:
-            return office
-        if t in RENDER_IMAGE_TARGETS:
-            return tools["libreoffice"], "Requires LibreOffice"
-        return False, "No installed converter can perform this conversion"
-
-    # Spreadsheets: convert_any has no dedicated branch, so these fall
-    # through to the LibreOffice catch-all (or image rendering).
-    if s in SPREADSHEETS:
-        if t == "md" and s in MARKDOWN_SOURCE_EXTENSIONS:
-            return tools["markitdown"], "Requires MarkItDown"
-        office = _office_target_support(s, t, tools)
-        if office is not None:
-            return office
-        if t in RENDER_IMAGE_TARGETS:
-            return tools["libreoffice"], "Requires LibreOffice"
-        return False, "Spreadsheet data has no reliable representation in this target"
-
-    # Presentations: same fallthrough as spreadsheets, but pptx can also use Pandoc.
-    if s in PRESENTATIONS:
-        if t == "md" and s in MARKDOWN_SOURCE_EXTENSIONS:
-            return tools["markitdown"], "Requires MarkItDown"
+            ready = True
+            if (s in {"xls", "ods"} or t in {"doc", "odt", "rtf"}) and not t_state["libreoffice"]:
+                ready = False
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="kiwi_semantic_bridge",
+                fidelity="high",
+            )
         if s in PANDOC_INPUTS and t in PANDOC_OUTPUTS:
-            return tools["pandoc"], "Requires Pandoc"
-        office = _office_target_support(s, t, tools)
-        if office is not None:
-            return office
+            ready = t_state["pandoc"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="pandoc" if not ready else None,
+                strategy="pandoc_doc_bridge",
+            )
+        if t in _OFFICE_TARGET_EXTS:
+            ready = t_state["libreoffice"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="libreoffice_conversion",
+            )
         if t in RENDER_IMAGE_TARGETS:
-            return tools["libreoffice"], "Requires LibreOffice"
-        return False, "Presentation content has no reliable representation in this target"
+            ready = t_state["libreoffice"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="office_render_images",
+            )
+        return StrategyOutcome(
+            supported=False,
+            ready=False,
+            status="unsupported",
+            reason="Word processor documents cannot be converted to this target format.",
+        )
 
-    # Native Pandoc markup bridge for anything else Pandoc understands.
-    if s in PANDOC_INPUTS and t in PANDOC_OUTPUTS:
-        return tools["pandoc"], "Requires Pandoc"
+    # 7. Spreadsheets & Presentations
+    if s in SPREADSHEETS or s in PRESENTATIONS:
+        if t == "md" and s in MARKDOWN_SOURCE_EXTENSIONS:
+            ready = t_state["markitdown"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="markitdown" if not ready else None,
+                strategy="markitdown_structural_export",
+            )
+        if (s, t) in _OFFICE_SEMANTIC_BRIDGES:
+            ready = True
+            if (s in {"xls", "ods"} or t in {"doc", "odt", "rtf"}) and not t_state["libreoffice"]:
+                ready = False
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="kiwi_semantic_bridge",
+                fidelity="high",
+            )
+        if s in PANDOC_INPUTS and t in PANDOC_OUTPUTS:
+            ready = t_state["pandoc"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="pandoc" if not ready else None,
+                strategy="pandoc_presentation_bridge",
+            )
+        if t in _OFFICE_TARGET_EXTS:
+            ready = t_state["libreoffice"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="libreoffice_conversion",
+            )
+        if t in RENDER_IMAGE_TARGETS:
+            ready = t_state["libreoffice"]
+            return StrategyOutcome(
+                supported=True,
+                ready=ready,
+                status="ready" if ready else "requires_engine",
+                required_engine="libreoffice" if not ready else None,
+                strategy="office_render_images",
+            )
+        return StrategyOutcome(
+            supported=False,
+            ready=False,
+            status="unsupported",
+            reason="Spreadsheet/presentation content cannot be converted to this target format.",
+        )
 
-    # Final LibreOffice catch-all, matching convert_any's last resort.
-    office = _office_target_support(s, t, tools)
-    if office is not None:
-        return office
-    if t in RENDER_IMAGE_TARGETS:
-        return tools["libreoffice"], "Requires LibreOffice"
+    # 8. Catch-all LibreOffice
+    if t in _OFFICE_TARGET_EXTS:
+        ready = t_state["libreoffice"]
+        return StrategyOutcome(
+            supported=True,
+            ready=ready,
+            status="ready" if ready else "requires_engine",
+            required_engine="libreoffice" if not ready else None,
+            strategy="libreoffice_fallback",
+        )
 
-    return False, "No installed converter can perform this conversion"
+    return StrategyOutcome(
+        supported=False,
+        ready=False,
+        status="unsupported",
+        reason=f"No viable conversion strategy exists from .{s} to .{t}.",
+    )
 
 
 def universal_target_options(source_ext: str) -> list[dict[str, Any]]:
+    """Returns all potential target formats for a given source extension, with status and readiness."""
     tools = tool_state()
     result: list[dict[str, Any]] = []
     for ext in all_target_extensions():
-        supported, reason = _document_conversion_support(source_ext, ext, tools)
+        outcome = resolve_strategy(source_ext, ext, tools)
         result.append({
             "ext": ext,
             "category": category_of(ext),
-            "supported": supported,
-            "ready": supported,
-            "reason": reason,
+            "supported": outcome.supported,
+            "ready": outcome.ready,
+            "status": outcome.status,
+            "reason": outcome.reason,
+            "strategy": outcome.strategy,
+            "fidelity": outcome.fidelity,
         })
     return result
 
 
 def valid_document_targets(source_ext: str) -> list[str]:
-    return [item["ext"] for item in universal_target_options(source_ext) if item["supported"]]
+    return [item["ext"] for item in universal_target_options(source_ext) if item["supported"] and item["ready"]]
 
 
 def document_target_options(source_ext: str) -> list[dict[str, Any]]:
@@ -534,4 +782,8 @@ def image_target_options(source_ext: str) -> list[dict[str, Any]]:
 
 
 def valid_image_targets(source_ext: str) -> list[str]:
-    return [item["ext"] for item in image_target_options(source_ext) if item["supported"] and item["ext"] in IMAGE_EXTENSIONS]
+    return [
+        item["ext"]
+        for item in image_target_options(source_ext)
+        if item["supported"] and item["ready"] and item["ext"] in IMAGE_EXTENSIONS
+    ]

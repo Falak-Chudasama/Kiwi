@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
-  FileType2,
+  ArrowDownUp,
+  FileText,
   Image as ImageIcon,
   Layers3,
   Lock,
@@ -9,6 +10,7 @@ import {
   Scissors,
   Stamp,
   Unlock,
+  AlertCircle,
 } from 'lucide-react'
 
 import { PageShell } from '../components/layout/PageShell'
@@ -16,15 +18,13 @@ import { Dropzone } from '../components/features/Dropzone'
 import { FileChip, formatBytes } from '../components/features/FileChip'
 import { ProgressPanel } from '../components/features/ProgressPanel'
 import { ResultPanel } from '../components/features/ResultPanel'
-import { PdfOperationTile } from '../components/features/PdfOperationTile'
-import { Popup } from '../components/ui/Popup'
 import { TextField } from '../components/ui/TextField'
 import { useJobRunner } from '../hooks/useJobRunner'
-
 
 type Operation =
   | 'merge'
   | 'split'
+  | 'reorder'
   | 'to_images'
   | 'from_images'
   | 'rotate'
@@ -33,106 +33,88 @@ type Operation =
   | 'watermark'
   | 'ocr'
 
-const OPERATIONS: {
+interface OperationDef {
   value: Operation
   label: string
-  icon: JSX.Element
+  icon: typeof FileText
   multiple: boolean
-}[] = [
-  { value: 'merge', label: 'Merge', icon: <Layers3 className="h-5 w-5" />, multiple: true },
-  { value: 'split', label: 'Split', icon: <Scissors className="h-5 w-5" />, multiple: false },
-  { value: 'to_images', label: 'PDF → Images', icon: <ImageIcon className="h-5 w-5" />, multiple: false },
-  { value: 'from_images', label: 'Images → PDF', icon: <ImageIcon className="h-5 w-5" />, multiple: true },
-  { value: 'rotate', label: 'Rotate', icon: <RotateCw className="h-5 w-5" />, multiple: false },
-  { value: 'protect', label: 'Protect', icon: <Lock className="h-5 w-5" />, multiple: false },
-  { value: 'unlock', label: 'Unlock', icon: <Unlock className="h-5 w-5" />, multiple: false },
-  { value: 'watermark', label: 'Watermark', icon: <Stamp className="h-5 w-5" />, multiple: false },
-  { value: 'ocr', label: 'OCR', icon: <ScanText className="h-5 w-5" />, multiple: false },
-]
-
-const ENDPOINTS: Record<Operation, string> = {
-  merge: '/api/pdf/merge',
-  split: '/api/pdf/split',
-  to_images: '/api/pdf/to-images',
-  from_images: '/api/pdf/from-images',
-  rotate: '/api/pdf/rotate',
-  protect: '/api/pdf/protect',
-  unlock: '/api/pdf/unlock',
-  watermark: '/api/pdf/watermark',
-  ocr: '/api/pdf/ocr',
+  description: string
 }
 
-function parseRanges(value: string): number[][] {
-  const ranges = value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => {
-      if (item.includes('-')) {
-        const [start, end] = item.split('-').map(Number)
-        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
-          throw new Error('Use ranges like 1-3,5-7.')
-        }
-        return [start, end]
-      }
-      const page = Number(item)
-      if (!Number.isInteger(page) || page < 1) {
-        throw new Error('Use pages like 1,2,4 or ranges like 1-3.')
-      }
-      return [page, page]
-    })
+const OPERATIONS: OperationDef[] = [
+  { value: 'merge', label: 'Merge', icon: Layers3, multiple: true, description: 'Combine multiple PDFs into a single document' },
+  { value: 'split', label: 'Split', icon: Scissors, multiple: false, description: 'Extract page ranges into separate PDF documents' },
+  { value: 'reorder', label: 'Reorder', icon: ArrowDownUp, multiple: false, description: 'Rearrange pages into a custom order' },
+  { value: 'to_images', label: 'PDF to Images', icon: ImageIcon, multiple: false, description: 'Render PDF pages into high-resolution images' },
+  { value: 'from_images', label: 'Images to PDF', icon: ImageIcon, multiple: true, description: 'Assemble image files into a single PDF' },
+  { value: 'rotate', label: 'Rotate', icon: RotateCw, multiple: false, description: 'Rotate pages by 90°, 180°, or 270°' },
+  { value: 'protect', label: 'Protect', icon: Lock, multiple: false, description: 'Encrypt a PDF with AES-256 password protection' },
+  { value: 'unlock', label: 'Unlock', icon: Unlock, multiple: false, description: 'Remove password restriction from an encrypted PDF' },
+  { value: 'watermark', label: 'Watermark', icon: Stamp, multiple: false, description: 'Overlay customized text across pages' },
+  { value: 'ocr', label: 'OCR', icon: ScanText, multiple: false, description: 'Recognize text on scanned pages with Tesseract' },
+]
 
-  if (!ranges.length) {
-    throw new Error('Enter at least one page or range.')
+function parseRanges(value: string): number[][] {
+  const parts = value.split(',').map((item) => item.trim()).filter(Boolean)
+  if (!parts.length) {
+    throw new Error('Enter at least one page or range (e.g. 1-3, 5-7).')
   }
 
-  return ranges
+  return parts.map((item) => {
+    if (item.includes('-')) {
+      const [startStr, endStr] = item.split('-').map((s) => s.trim())
+      const start = Number(startStr)
+      const end = Number(endStr)
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+        throw new Error(`Invalid range '${item}'. Example valid format: 1-3, 5-7.`)
+      }
+      return [start, end]
+    }
+    const page = Number(item)
+    if (!Number.isInteger(page) || page < 1) {
+      throw new Error(`Invalid page number '${item}'.`)
+    }
+    return [page, page]
+  })
+}
+
+function parseOrder(value: string): number[] {
+  const parts = value.split(',').map((s) => s.trim()).filter(Boolean)
+  if (!parts.length) {
+    throw new Error('Enter the 1-based page order (e.g. 3, 1, 2).')
+  }
+  const pages = parts.map((p) => {
+    const num = Number(p)
+    if (!Number.isInteger(num) || num < 1) {
+      throw new Error(`Invalid page number '${p}'.`)
+    }
+    // Return 0-based index for backend
+    return num - 1
+  })
+  return pages
 }
 
 export default function PdfToolsPage() {
   const [operation, setOperation] = useState<Operation>('merge')
   const [files, setFiles] = useState<File[]>([])
-  const [popupOpen, setPopupOpen] = useState(false)
 
+  // Options state
   const [password, setPassword] = useState('')
   const [rotateDegrees, setRotateDegrees] = useState(90)
   const [splitRanges, setSplitRanges] = useState('1-2')
+  const [pageOrder, setPageOrder] = useState('2, 1')
   const [imageFormat, setImageFormat] = useState('png')
+  const [dpi, setDpi] = useState(150)
+  const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL')
+  const [watermarkOpacity, setWatermarkOpacity] = useState(0.25)
+  const [watermarkSize, setWatermarkSize] = useState(40)
+  const [watermarkAngle, setWatermarkAngle] = useState(35)
   const [ocrLanguage, setOcrLanguage] = useState('eng')
 
-  const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL')
-  const [watermarkFontSize, setWatermarkFontSize] = useState('40')
-  const [watermarkOpacity, setWatermarkOpacity] = useState('25')
-  const [watermarkAngle, setWatermarkAngle] = useState('35')
-  const [watermarkPosition, setWatermarkPosition] = useState('center')
-  const [watermarkColor, setWatermarkColor] = useState('#777777')
+  const { state, progress, jobId, results, kind, errorMessage, isBusy, run, cancel, reset } =
+    useJobRunner()
 
-  const {
-    state,
-    progress,
-    jobId,
-    results,
-    kind,
-    errorMessage,
-    run,
-    reset,
-  } = useJobRunner()
-
-  const active = OPERATIONS.find((item) => item.value === operation)!
-
-  const needsPopup = [
-    'split',
-    'rotate',
-    'protect',
-    'unlock',
-    'watermark',
-    'to_images',
-    'ocr',
-  ].includes(operation)
-
-  const accept = operation === 'from_images'
-    ? '.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.tiff,.tif,.ico,.heic,.heif,.svg'
-    : '.pdf'
+  const currentOp = OPERATIONS.find((op) => op.value === operation)!
 
   const switchOperation = (next: Operation) => {
     setOperation(next)
@@ -140,334 +122,376 @@ export default function PdfToolsPage() {
     setFiles([])
   }
 
-  const buildFormData = (): FormData => {
-    const form = new FormData()
-
-    if (active.multiple) {
-      files.forEach((file) => form.append('files', file))
-    } else {
-      form.append('file', files[0])
-    }
-
-    if (operation === 'protect' || operation === 'unlock') {
-      form.append('password', password)
-    }
-
-    if (operation === 'rotate') {
-      form.append('degrees', String(rotateDegrees))
-    }
-
-    if (operation === 'split') {
-      form.append('ranges', JSON.stringify(parseRanges(splitRanges)))
-    }
-
-    if (operation === 'to_images') {
-      form.append('image_format', imageFormat)
-    }
-
-    if (operation === 'ocr') {
-      form.append('language', ocrLanguage.trim() || 'eng')
-    }
-
-    if (operation === 'watermark') {
-      form.append('text', watermarkText)
-      form.append('fontsize', watermarkFontSize)
-      form.append('opacity', String(Number(watermarkOpacity) / 100))
-      form.append('angle', watermarkAngle)
-      form.append('position', watermarkPosition)
-      form.append('color', JSON.stringify([
-        parseInt(watermarkColor.slice(1, 3), 16),
-        parseInt(watermarkColor.slice(3, 5), 16),
-        parseInt(watermarkColor.slice(5, 7), 16),
-      ]))
-    }
-
-    return form
+  const handleFiles = (incoming: File[]) => {
+    reset()
+    setFiles(incoming)
   }
 
-  const start = async () => {
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+    reset()
+  }
+
+  const handleSubmit = async () => {
     if (!files.length) return
-    // Close the popup right away so the progress/result panel underneath is
-    // visible while the job runs — run() awaits the full job (upload +
-    // processing + polling), which can take a while, and previously kept
-    // the popup on screen for that entire duration.
-    setPopupOpen(false)
-    await run(ENDPOINTS[operation], buildFormData())
-  }
+    const formData = new FormData()
 
-  const handlePrimary = () => {
-    if (!files.length) return
-    if (needsPopup) {
-      setPopupOpen(true)
-      return
+    try {
+      if (operation === 'merge') {
+        files.forEach((f) => formData.append('files', f))
+        await run('/api/pdf/merge', formData)
+      } else if (operation === 'split') {
+        const ranges = parseRanges(splitRanges)
+        formData.append('file', files[0])
+        formData.append('ranges', JSON.stringify(ranges))
+        await run('/api/pdf/split', formData)
+      } else if (operation === 'reorder') {
+        const order = parseOrder(pageOrder)
+        formData.append('file', files[0])
+        formData.append('order', JSON.stringify(order))
+        await run('/api/pdf/reorder', formData)
+      } else if (operation === 'to_images') {
+        formData.append('file', files[0])
+        formData.append('image_format', imageFormat)
+        formData.append('dpi', String(dpi))
+        await run('/api/pdf/to-images', formData)
+      } else if (operation === 'from_images') {
+        files.forEach((f) => formData.append('files', f))
+        await run('/api/pdf/from-images', formData)
+      } else if (operation === 'rotate') {
+        formData.append('file', files[0])
+        formData.append('degrees', String(rotateDegrees))
+        await run('/api/pdf/rotate', formData)
+      } else if (operation === 'protect') {
+        if (!password.trim()) throw new Error('Password cannot be empty.')
+        formData.append('file', files[0])
+        formData.append('password', password)
+        await run('/api/pdf/protect', formData)
+      } else if (operation === 'unlock') {
+        if (!password.trim()) throw new Error('Password cannot be empty.')
+        formData.append('file', files[0])
+        formData.append('password', password)
+        await run('/api/pdf/unlock', formData)
+      } else if (operation === 'watermark') {
+        if (!watermarkText.trim()) throw new Error('Watermark text cannot be empty.')
+        formData.append('file', files[0])
+        formData.append('text', watermarkText)
+        formData.append('fontsize', String(watermarkSize))
+        formData.append('opacity', String(watermarkOpacity))
+        formData.append('angle', String(watermarkAngle))
+        formData.append('color', '120,120,120')
+        await run('/api/pdf/watermark', formData)
+      } else if (operation === 'ocr') {
+        formData.append('file', files[0])
+        formData.append('language', ocrLanguage)
+        await run('/api/pdf/ocr', formData)
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Invalid parameters.')
     }
-    void start()
   }
 
-  const isBusy = state === 'uploading' || state === 'processing'
-
-  const popupTitle = {
-    split: 'Split pages',
-    rotate: 'Rotate pages',
-    protect: 'Protect PDF',
-    unlock: 'Unlock PDF',
-    watermark: 'Watermark settings',
-    to_images: 'PDF image output',
-    ocr: 'OCR settings',
-  }[operation as Exclude<Operation, 'merge' | 'from_images'>] ?? ''
+  const acceptPattern = operation === 'from_images' ? '.png,.jpg,.jpeg,.webp,.avif,.tiff' : '.pdf'
 
   return (
     <PageShell
-      title="PDF Tools"
-      description="Merge, split, rotate, protect, watermark, OCR, and convert PDFs locally."
-      icon={<FileType2 className="h-5 w-5" />}
+      title="PDF Workspace"
+      description="Merge, split, reorder, render, protect, watermark, and OCR PDF documents."
+      icon={<FileText className="h-4 w-4" />}
     >
-      <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-5">
-        {OPERATIONS.map((item) => (
-          <PdfOperationTile
-            key={item.value}
-            label={item.label}
-            icon={item.icon}
-            active={operation === item.value}
-            onClick={() => switchOperation(item.value)}
-          />
+      {/* Operation Tabs Strip */}
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-black/[0.06] bg-white p-2 shadow-soft">
+        {OPERATIONS.map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => switchOperation(value)}
+            className={`flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold transition ${
+              operation === value
+                ? 'bg-stone-900 text-white shadow-xs'
+                : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            <span>{label}</span>
+          </button>
         ))}
       </div>
 
-      <div className="mt-7">
-        {!files.length ? (
-          <Dropzone
-            onFiles={(incoming) => { reset(); setFiles(incoming) }}
-            multiple={active.multiple}
-            accept={accept}
-            hint={active.multiple
-              ? operation === 'merge'
-                ? 'Select PDFs in merge order'
-                : 'Select images to combine into one PDF'
-              : 'Select one PDF'}
-          />
-        ) : (
-          <div className="space-y-5">
-            <div className="space-y-2">
-              {files.map((file, index) => (
-                <FileChip
-                  key={`${file.name}-${index}`}
-                  name={file.name}
-                  sizeLabel={formatBytes(file.size)}
-                  onRemove={state === 'idle' ? () => setFiles((prev) => prev.filter((_, i) => i !== index)) : undefined}
-                />
-              ))}
+      {!files.length ? (
+        <Dropzone
+          onFiles={handleFiles}
+          multiple={currentOp.multiple}
+          accept={acceptPattern}
+          hint={
+            operation === 'from_images'
+              ? 'Select images to assemble into a PDF'
+              : `${currentOp.description} (${currentOp.multiple ? 'select multiple PDFs' : 'select one PDF'})`
+          }
+        />
+      ) : (
+        <div className="space-y-6">
+          {/* Selected File(s) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold uppercase tracking-wider text-stone-500">
+                Selected Input ({files.length})
+              </span>
+              {state === 'idle' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    reset()
+                    setFiles([])
+                  }}
+                  className="text-sm font-semibold text-stone-400 hover:text-stone-700 transition"
+                >
+                  Clear all
+                </button>
+              )}
             </div>
-
-            {state === 'idle' ? (
-              <button
-                type="button"
-                onClick={handlePrimary}
-                className="focus-ring w-full rounded-2xl bg-kiwi-flesh px-5 py-3.5 text-sm font-bold text-white transition hover:bg-kiwi-flesh-600"
-              >
-                Run {active.label}
-              </button>
-            ) : null}
-
-            {isBusy ? (
-              <ProgressPanel label={`Running ${active.label.toLowerCase()}…`} progress={progress} />
-            ) : null}
-
-            {state === 'done' && jobId ? (
-              <ResultPanel
-                jobId={jobId}
-                results={results}
-                kind={kind ?? operation}
-                onReset={() => { reset(); setFiles([]) }}
+            {files.map((file, idx) => (
+              <FileChip
+                key={`${file.name}-${idx}`}
+                name={file.name}
+                sizeLabel={formatBytes(file.size)}
+                onRemove={state === 'idle' ? () => removeFile(idx) : undefined}
               />
-            ) : null}
-
-            {state === 'failed' ? (
-              <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-                {errorMessage}
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
-
-      <Popup
-        open={popupOpen}
-        onClose={() => setPopupOpen(false)}
-        title={popupTitle}
-        width="lg"
-        footer={(
-          <>
-            <button
-              type="button"
-              onClick={() => setPopupOpen(false)}
-              className="focus-ring rounded-xl border border-stone-200 px-4 py-2 text-sm font-semibold text-kiwi-ink/60"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void start()}
-              className="focus-ring rounded-xl bg-kiwi-flesh px-4 py-2 text-sm font-bold text-white"
-            >
-              Run
-            </button>
-          </>
-        )}
-      >
-        {(operation === 'protect' || operation === 'unlock') ? (
-          <TextField
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoFocus
-          />
-        ) : null}
-
-        {operation === 'split' ? (
-          <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-kiwi-ink/45">
-              Page ranges
-            </label>
-            <TextField
-              className="mt-2"
-              value={splitRanges}
-              onChange={(event) => setSplitRanges(event.target.value)}
-              placeholder="1-3,5-7,9"
-            />
-            <p className="mt-2 text-xs text-kiwi-ink/45">
-              Each range becomes a separate PDF and Kiwi returns one ZIP.
-            </p>
-          </div>
-        ) : null}
-
-        {operation === 'rotate' ? (
-          <div className="flex gap-2">
-            {[90, 180, 270].map((degree) => (
-              <button
-                key={degree}
-                type="button"
-                onClick={() => setRotateDegrees(degree)}
-                className={`focus-ring flex-1 rounded-xl border px-3 py-2.5 text-sm font-bold ${rotateDegrees === degree ? 'border-kiwi-flesh bg-kiwi-flesh text-white' : 'border-stone-200 bg-white text-kiwi-ink/65'}`}
-              >
-                {degree}°
-              </button>
             ))}
           </div>
-        ) : null}
 
-        {operation === 'to_images' ? (
-          <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-kiwi-ink/45">
-              Output format
-            </label>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {['png', 'jpg', 'webp'].map((format) => (
-                <button
-                  key={format}
-                  type="button"
-                  onClick={() => setImageFormat(format)}
-                  className={`rounded-xl border px-3 py-2.5 text-sm font-bold uppercase ${imageFormat === format ? 'border-kiwi-flesh bg-kiwi-flesh text-white' : 'border-stone-200 bg-white text-kiwi-ink/65'}`}
-                >
-                  {format}
-                </button>
-              ))}
+          {/* Contextual Operation Configuration */}
+          {state === 'idle' && (
+            <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-soft space-y-5">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500">
+                {currentOp.label} Options
+              </h2>
+
+              {operation === 'split' && (
+                <div className="space-y-2 text-xs">
+                  <label className="block font-semibold text-stone-700">
+                    Page Ranges to Extract
+                  </label>
+                  <TextField
+                    placeholder="e.g. 1-2, 3-5, 8"
+                    value={splitRanges}
+                    onChange={(e) => setSplitRanges(e.target.value)}
+                  />
+                  <p className="text-[11px] text-stone-400">
+                    Each range is extracted as a separate result file available for individual or batch download.
+                  </p>
+                </div>
+              )}
+
+              {operation === 'reorder' && (
+                <div className="space-y-2 text-xs">
+                  <label className="block font-semibold text-stone-700">
+                    New Page Sequence (1-based page numbers)
+                  </label>
+                  <TextField
+                    placeholder="e.g. 3, 1, 2"
+                    value={pageOrder}
+                    onChange={(e) => setPageOrder(e.target.value)}
+                  />
+                  <p className="text-[11px] text-stone-400">
+                    Specify the desired page order. Every page from the original document must appear exactly once.
+                  </p>
+                </div>
+              )}
+
+              {operation === 'to_images' && (
+                <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">Image Format</label>
+                    <select
+                      value={imageFormat}
+                      onChange={(e) => setImageFormat(e.target.value)}
+                      className="focus-ring w-full rounded-xl border border-stone-200/80 bg-white px-3 py-2 text-xs text-stone-900"
+                    >
+                      <option value="png">PNG (Lossless)</option>
+                      <option value="jpg">JPG (Photo/Document)</option>
+                      <option value="webp">WebP (Efficient)</option>
+                      <option value="tiff">TIFF (Archive)</option>
+                      <option value="bmp">BMP (Raw)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">Render Quality (DPI)</label>
+                    <select
+                      value={dpi}
+                      onChange={(e) => setDpi(Number(e.target.value))}
+                      className="focus-ring w-full rounded-xl border border-stone-200/80 bg-white px-3 py-2 text-xs text-stone-900"
+                    >
+                      <option value={96}>96 DPI (Web Draft)</option>
+                      <option value={150}>150 DPI (Balanced Standard)</option>
+                      <option value={300}>300 DPI (High Resolution Print)</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {operation === 'rotate' && (
+                <div className="space-y-2 text-xs">
+                  <label className="block font-semibold text-stone-700">Rotation Angle</label>
+                  <div className="flex gap-2">
+                    {[90, 180, 270].map((deg) => (
+                      <button
+                        key={deg}
+                        type="button"
+                        onClick={() => setRotateDegrees(deg)}
+                        className={`rounded-xl px-4 py-2 text-xs font-bold transition border ${
+                          rotateDegrees === deg
+                            ? 'bg-stone-900 text-white border-stone-900'
+                            : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                        }`}
+                      >
+                        +{deg}° Clockwise
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(operation === 'protect' || operation === 'unlock') && (
+                <div className="space-y-2 text-xs">
+                  <label className="block font-semibold text-stone-700">
+                    {operation === 'protect' ? 'Set Password for PDF' : 'Document Password'}
+                  </label>
+                  <TextField
+                    type="password"
+                    placeholder="Enter password..."
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <p className="text-[11px] text-stone-400">
+                    {operation === 'protect'
+                      ? 'Applies AES-256 standard encryption.'
+                      : 'Decryption happens locally in process RAM.'}
+                  </p>
+                </div>
+              )}
+
+              {operation === 'watermark' && (
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="block font-semibold text-stone-700 mb-1">Watermark Text</label>
+                    <TextField
+                      value={watermarkText}
+                      onChange={(e) => setWatermarkText(e.target.value)}
+                      placeholder="e.g. CONFIDENTIAL"
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="block font-semibold text-stone-700 mb-1">
+                        Opacity ({Math.round(watermarkOpacity * 100)}%)
+                      </label>
+                      <input
+                        type="range"
+                        min="0.05"
+                        max="1.0"
+                        step="0.05"
+                        value={watermarkOpacity}
+                        onChange={(e) => setWatermarkOpacity(Number(e.target.value))}
+                        className="w-full accent-kiwi-flesh"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-stone-700 mb-1">
+                        Font Size ({watermarkSize} pt)
+                      </label>
+                      <TextField
+                        type="number"
+                        min="10"
+                        max="160"
+                        value={watermarkSize}
+                        onChange={(e) => setWatermarkSize(Number(e.target.value))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-stone-700 mb-1">
+                        Angle ({watermarkAngle}°)
+                      </label>
+                      <TextField
+                        type="number"
+                        min="-90"
+                        max="90"
+                        value={watermarkAngle}
+                        onChange={(e) => setWatermarkAngle(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {operation === 'ocr' && (
+                <div className="space-y-2 text-xs">
+                  <label className="block font-semibold text-stone-700">OCR Language</label>
+                  <select
+                    value={ocrLanguage}
+                    onChange={(e) => setOcrLanguage(e.target.value)}
+                    className="focus-ring w-full rounded-xl border border-stone-200/80 bg-white px-3 py-2 text-xs text-stone-900"
+                  >
+                    <option value="eng">English (eng)</option>
+                    <option value="deu">German (deu)</option>
+                    <option value="fra">French (fra)</option>
+                    <option value="spa">Spanish (spa)</option>
+                    <option value="ita">Italian (ita)</option>
+                  </select>
+                  <p className="text-[11px] text-stone-400">
+                    Tesseract recognizes text on scanned pages and inserts an invisible searchable text layer over each page.
+                  </p>
+                </div>
+              )}
             </div>
-            <p className="mt-2 text-xs text-kiwi-ink/45">Every page is returned inside one ZIP.</p>
-          </div>
-        ) : null}
+          )}
 
-        {operation === 'ocr' ? (
-          <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-kiwi-ink/45">
-              Tesseract language
-            </label>
-            <TextField
-              className="mt-2"
-              value={ocrLanguage}
-              onChange={(event) => setOcrLanguage(event.target.value)}
-              placeholder="eng"
+          {/* Action Trigger */}
+          {state === 'idle' && (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isBusy}
+              className="focus-ring flex w-full items-center justify-center gap-2 rounded-2xl bg-kiwi-flesh py-4 text-sm sm:text-base font-bold text-white shadow-soft transition hover:bg-kiwi-flesh-600"
+            >
+              <span>Execute {currentOp.label}</span>
+            </button>
+          )}
+
+          {/* Progress */}
+          {isBusy && (
+            <ProgressPanel
+              label={`Processing PDF ${currentOp.label}…`}
+              progress={progress}
+              onCancel={cancel}
             />
-            <p className="mt-2 text-xs text-kiwi-ink/45">The language data must be installed in your local Tesseract installation.</p>
-          </div>
-        ) : null}
+          )}
 
-        {operation === 'watermark' ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-kiwi-ink/45">Watermark text</label>
-              <TextField
-                className="mt-2"
-                value={watermarkText}
-                onChange={(event) => setWatermarkText(event.target.value)}
-                placeholder="CONFIDENTIAL"
-              />
-            </div>
+          {/* Results */}
+          {state === 'done' && jobId && (
+            <ResultPanel
+              jobId={jobId}
+              results={results}
+              kind={kind ?? 'pdf_tool'}
+              onReset={() => {
+                reset()
+                setFiles([])
+              }}
+            />
+          )}
 
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-kiwi-ink/45">Font size</label>
-              <TextField
-                className="mt-2"
-                type="number"
-                min={8}
-                max={200}
-                value={watermarkFontSize}
-                onChange={(event) => setWatermarkFontSize(event.target.value)}
-              />
+          {/* Error Message */}
+          {state === 'failed' && (
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4 text-xs text-rose-700 animate-slide-up">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold">Operation failed</p>
+                <p className="mt-1 text-rose-600">{errorMessage}</p>
+              </div>
             </div>
-
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-kiwi-ink/45">Opacity %</label>
-              <TextField
-                className="mt-2"
-                type="number"
-                min={0}
-                max={100}
-                value={watermarkOpacity}
-                onChange={(event) => setWatermarkOpacity(event.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-kiwi-ink/45">Angle °</label>
-              <TextField
-                className="mt-2"
-                type="number"
-                min={-180}
-                max={180}
-                value={watermarkAngle}
-                onChange={(event) => setWatermarkAngle(event.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-kiwi-ink/45">Color</label>
-              <TextField
-                className="mt-2 h-11 p-1"
-                type="color"
-                value={watermarkColor}
-                onChange={(event) => setWatermarkColor(event.target.value)}
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-kiwi-ink/45">Position</label>
-              <select
-                value={watermarkPosition}
-                onChange={(event) => setWatermarkPosition(event.target.value)}
-                className="focus-ring mt-2 w-full rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm"
-              >
-                <option value="center">Center</option>
-                <option value="top-left">Top left</option>
-                <option value="top-right">Top right</option>
-                <option value="bottom-left">Bottom left</option>
-                <option value="bottom-right">Bottom right</option>
-              </select>
-            </div>
-          </div>
-        ) : null}
-      </Popup>
+          )}
+        </div>
+      )}
     </PageShell>
   )
 }

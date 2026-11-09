@@ -23,6 +23,7 @@ def _oxipng_optimize(png_path: Path) -> None:
 def merge_pdfs(input_paths: list[Path], out_dir: Path) -> Path:
     if len(input_paths) < 2:
         raise ValueError("Select at least two PDFs to merge.")
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / "merged.pdf"
     target = pikepdf.Pdf.new()
     for path in input_paths:
@@ -33,14 +34,19 @@ def merge_pdfs(input_paths: list[Path], out_dir: Path) -> Path:
 
 
 def split_pdf(input_path: Path, out_dir: Path, page_ranges: list[tuple[int, int]]) -> list[Path]:
+    if not page_ranges:
+        raise ValueError("At least one page range must be provided.")
+    out_dir.mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
     with pikepdf.open(input_path) as src:
         page_count = len(src.pages)
+        if page_count == 0:
+            raise ValueError("The provided PDF contains no pages.")
         for idx, (start, end) in enumerate(page_ranges, start=1):
             if start < 1 or end > page_count or start > end:
                 raise ValueError(f"Invalid page range {start}-{end} for a {page_count}-page PDF.")
             chunk = pikepdf.Pdf.new()
-            chunk.pages.extend(src.pages[start - 1:end])
+            chunk.pages.extend(src.pages[start - 1 : end])
             chunk_path = out_dir / f"{input_path.stem}_part{idx}.pdf"
             chunk.save(chunk_path)
             outputs.append(chunk_path)
@@ -49,7 +55,8 @@ def split_pdf(input_path: Path, out_dir: Path, page_ranges: list[tuple[int, int]
 
 def rotate_pdf(input_path: Path, out_dir: Path, degrees: int) -> Path:
     if degrees not in {90, 180, 270, -90, -180, -270}:
-        raise ValueError("Rotation must be 90, 180, or 270 degrees.")
+        raise ValueError("Rotation angle must be 90, 180, or 270 degrees.")
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{input_path.stem}_rotated.pdf"
     with pikepdf.open(input_path) as pdf:
         for page in pdf.pages:
@@ -59,10 +66,12 @@ def rotate_pdf(input_path: Path, out_dir: Path, degrees: int) -> Path:
 
 
 def reorder_pdf(input_path: Path, out_dir: Path, new_order: list[int]) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{input_path.stem}_reordered.pdf"
     with pikepdf.open(input_path) as src:
-        if sorted(new_order) != list(range(len(src.pages))):
-            raise ValueError("Page order must contain every page exactly once.")
+        page_count = len(src.pages)
+        if sorted(new_order) != list(range(page_count)):
+            raise ValueError(f"Page order must contain every page 0..{page_count - 1} exactly once.")
         result = pikepdf.Pdf.new()
         for index in new_order:
             result.pages.append(src.pages[index])
@@ -73,6 +82,7 @@ def reorder_pdf(input_path: Path, out_dir: Path, new_order: list[int]) -> Path:
 def protect_pdf(input_path: Path, out_dir: Path, password: str) -> Path:
     if not password:
         raise ValueError("Password cannot be empty.")
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{input_path.stem}_protected.pdf"
     with pikepdf.open(input_path) as pdf:
         pdf.save(output_path, encryption=pikepdf.Encryption(owner=password, user=password, R=6))
@@ -82,33 +92,55 @@ def protect_pdf(input_path: Path, out_dir: Path, password: str) -> Path:
 def unlock_pdf(input_path: Path, out_dir: Path, password: str) -> Path:
     if not password:
         raise ValueError("Password cannot be empty.")
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{input_path.stem}_unlocked.pdf"
-    with pikepdf.open(input_path, password=password) as pdf:
-        pdf.save(output_path)
+    try:
+        with pikepdf.open(input_path, password=password) as pdf:
+            pdf.save(output_path)
+    except pikepdf.PasswordError as exc:
+        raise ValueError("Incorrect password for this protected PDF.") from exc
     return output_path
 
 
-def pdf_to_images(input_path: Path, out_dir: Path, image_format: str, dpi: int = 150) -> list[Path]:
-    if image_format not in {"png", "jpg", "jpeg", "webp"}:
-        raise ValueError("PDF image output must be PNG, JPG, or WEBP.")
+SUPPORTED_PDF_IMAGE_FORMATS = {"png", "jpg", "jpeg", "webp", "tiff", "tif", "bmp", "gif", "ico"}
 
+
+def pdf_to_images(input_path: Path, out_dir: Path, image_format: str, dpi: int = 150) -> list[Path]:
+    fmt = image_format.lower().lstrip(".")
+    if fmt not in SUPPORTED_PDF_IMAGE_FORMATS:
+        raise ValueError(f"PDF image output must be one of: {', '.join(sorted(SUPPORTED_PDF_IMAGE_FORMATS))}.")
+
+    # Safety: clamp DPI between 50 and 300 to avoid unbounded memory explosion
+    safe_dpi = max(50, min(300, int(dpi)))
+    out_dir.mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
+
     doc = fitz.open(input_path)
     try:
-        matrix = fitz.Matrix(dpi / 72, dpi / 72)
+        matrix = fitz.Matrix(safe_dpi / 72, safe_dpi / 72)
         for page_index in range(len(doc)):
             page = doc.load_page(page_index)
             pixmap = page.get_pixmap(matrix=matrix, alpha=False)
-            png = pixmap.tobytes("png")
-            image = Image.open(io.BytesIO(png)).convert("RGB")
-            page_path = out_dir / f"{input_path.stem}_page{page_index + 1}.{image_format}"
-            if image_format in {"jpg", "jpeg"}:
+            png_bytes = pixmap.tobytes("png")
+            image = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+            page_path = out_dir / f"{input_path.stem}_page{page_index + 1}.{fmt}"
+
+            if fmt in {"jpg", "jpeg"}:
                 image.save(page_path, format="JPEG", quality=92, optimize=True)
-            elif image_format == "webp":
+            elif fmt == "webp":
                 image.save(page_path, format="WEBP", quality=90, method=6)
+            elif fmt in {"tiff", "tif"}:
+                image.save(page_path, format="TIFF", compression="tiff_deflate")
+            elif fmt == "bmp":
+                image.save(page_path, format="BMP")
+            elif fmt == "gif":
+                image.save(page_path, format="GIF")
+            elif fmt == "ico":
+                image.save(page_path, format="ICO", sizes=[(256, 256)])
             else:
                 image.save(page_path, format="PNG", optimize=True)
                 _oxipng_optimize(page_path)
+
             image.close()
             outputs.append(page_path)
     finally:
@@ -121,12 +153,10 @@ def _open_any_image(path: Path) -> Image.Image:
     ext = path.suffix.lower().lstrip(".")
     if ext == "svg":
         import cairosvg
-
         png_bytes = cairosvg.svg2png(url=str(path))
         return Image.open(io.BytesIO(png_bytes)).convert("RGB")
     if ext in {"heic", "heif"}:
         import pillow_heif
-
         pillow_heif.register_heif_opener()
     try:
         return Image.open(path).convert("RGB")
@@ -139,6 +169,7 @@ def _open_any_image(path: Path) -> Image.Image:
 def images_to_pdf(input_paths: list[Path], out_dir: Path) -> Path:
     if not input_paths:
         raise ValueError("Select at least one image.")
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / "combined.pdf"
     images = [_open_any_image(p) for p in input_paths]
     try:
@@ -205,6 +236,7 @@ def watermark_pdf(
     if not 0.0 <= opacity <= 1.0:
         raise ValueError("Watermark opacity must be between 0 and 1.")
 
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{input_path.stem}_watermarked.pdf"
     png_bytes, (img_w, img_h) = _watermark_image(text, fontsize, opacity, angle, color)
 
@@ -227,8 +259,6 @@ def watermark_pdf(
             else:
                 x0, y0 = (rect.width - width) / 2, (rect.height - height) / 2
             target = fitz.Rect(x0, y0, x0 + width, y0 + height)
-            # Arbitrary angles are handled by rotating the PNG first.
-            # This avoids PyMuPDF's restricted text-rotation enum.
             page.insert_image(target, stream=png_bytes, overlay=True)
         doc.save(output_path)
     finally:
@@ -242,16 +272,20 @@ def ocr_pdf(input_path: Path, out_dir: Path, language: str = "eng") -> Path:
 
     tesseract = command_path(
         settings.tesseract_bin,
-        [r"C:\Program Files\Tesseract-OCR\tesseract.exe"],
+        [
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        ],
     )
     if not tesseract:
         raise RuntimeError(
-            "OCR needs Tesseract OCR installed and available on PATH. "
-            "Install Tesseract, restart Kiwi, or set KIWI_TESSERACT_BIN."
+            "OCR requires Tesseract OCR installed. "
+            "Install Tesseract and restart Kiwi, or set KIWI_TESSERACT_BIN."
         )
 
     pytesseract.pytesseract.tesseract_cmd = tesseract
 
+    out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"{input_path.stem}_ocr.pdf"
     source = fitz.open(input_path)
     result = fitz.open()

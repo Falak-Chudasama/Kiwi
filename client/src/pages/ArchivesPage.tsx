@@ -1,53 +1,228 @@
 import { useState } from 'react'
+import {
+  AlertCircle,
+  Archive,
+  FolderArchive,
+  FolderOpen,
+  PackageOpen,
+} from 'lucide-react'
 import { PageShell } from '../components/layout/PageShell'
 import { Dropzone } from '../components/features/Dropzone'
 import { FileChip, formatBytes } from '../components/features/FileChip'
 import { ProgressPanel } from '../components/features/ProgressPanel'
 import { ResultPanel } from '../components/features/ResultPanel'
-import { ArchiveIcon, PackageOpenIcon } from '../components/ui/icons'
+import { TextField } from '../components/ui/TextField'
 import { useJobRunner } from '../hooks/useJobRunner'
 
-type Mode = 'create' | 'extract'
-const ACCEPT = '.zip,.7z,.tar,.tar.gz,.tgz,.tar.bz2,.tbz2,.tar.xz,.txz,.rar'
+type ArchiveMode = 'create' | 'extract'
+
+const ACCEPT_ARCHIVES = '.zip,.7z,.tar,.tar.gz,.tgz,.tar.bz2,.tbz2,.tar.xz,.txz,.rar'
 
 export default function ArchivesPage() {
-  const [mode, setMode] = useState<Mode>('create')
+  const [mode, setMode] = useState<ArchiveMode>('create')
   const [files, setFiles] = useState<File[]>([])
   const [archiveFormat, setArchiveFormat] = useState('zip')
-  const { state, progress, jobId, results, kind, errorMessage, run, reset } = useJobRunner()
+  const [archiveName, setArchiveName] = useState('')
 
-  const switchMode = (next: Mode) => { setMode(next); reset(); setFiles([]) }
-  const handleFiles = (incoming: File[]) => { reset(); setFiles(incoming) }
-  const removeFile = (index: number) => setFiles((prev) => prev.filter((_, i) => i !== index))
+  const { state, progress, jobId, results, kind, errorMessage, isBusy, run, cancel, reset } =
+    useJobRunner()
+
+  const switchMode = (nextMode: ArchiveMode) => {
+    setMode(nextMode)
+    reset()
+    setFiles([])
+    setArchiveName('')
+  }
+
+  const handleFiles = (incoming: File[]) => {
+    reset()
+    setFiles(incoming)
+    if (mode === 'create' && incoming.length && !archiveName) {
+      const stem = incoming[0].name.replace(/\.[^.]+$/, '')
+      setArchiveName(incoming.length === 1 ? stem : 'bundle')
+    }
+  }
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+    reset()
+  }
+
   const handleRun = async () => {
     if (!files.length) return
     const formData = new FormData()
+
     if (mode === 'create') {
       files.forEach((f) => formData.append('files', f))
       formData.append('archive_format', archiveFormat)
-      const archiveName = files.length === 1 ? files[0].name.replace(/\.[^.]+$/, '') : 'bundle'
-      formData.append('name', archiveName)
+      formData.append('name', archiveName.trim() || 'bundle')
       await run('/api/archives/create', formData)
     } else {
       formData.append('file', files[0])
       await run('/api/archives/extract', formData)
     }
   }
-  const isBusy = state === 'uploading' || state === 'processing'
 
-  return <PageShell title="Archives" description="Create or extract supported archives." icon={<ArchiveIcon className="h-5 w-5" />}>
-    <div className="mb-6 inline-flex rounded-2xl border border-stone-200 bg-white p-1.5 shadow-sm">
-      {(['create', 'extract'] as Mode[]).map((m) => <button key={m} type="button" onClick={() => switchMode(m)} className={`rounded-xl px-4 py-2 text-sm font-bold transition ${mode === m ? 'bg-kiwi-flesh text-white' : 'text-kiwi-ink/50 hover:text-kiwi-ink'}`}>{m === 'create' ? 'Create archive' : 'Extract archive'}</button>)}
-    </div>
+  return (
+    <PageShell
+      title="Archive Workspace"
+      description="Bundle files into compressed archives or safely unpack ZIP, 7Z, TAR, and RAR files."
+      icon={<Archive className="h-4 w-4" />}
+    >
+      {/* Mode Switcher */}
+      <div className="flex gap-2 rounded-2xl border border-black/[0.06] bg-white p-2 shadow-soft">
+        <button
+          type="button"
+          onClick={() => switchMode('create')}
+          className={`flex-1 flex items-center justify-center gap-2.5 rounded-xl py-3 text-sm font-bold transition ${
+            mode === 'create'
+              ? 'bg-stone-900 text-white shadow-xs'
+              : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+          }`}
+        >
+          <FolderArchive className="h-4 w-4" />
+          <span>Create Archive</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => switchMode('extract')}
+          className={`flex-1 flex items-center justify-center gap-2.5 rounded-xl py-3 text-sm font-bold transition ${
+            mode === 'extract'
+              ? 'bg-stone-900 text-white shadow-xs'
+              : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+          }`}
+        >
+          <PackageOpen className="h-4 w-4" />
+          <span>Extract Archive</span>
+        </button>
+      </div>
 
-    {!files.length ? <Dropzone onFiles={handleFiles} multiple={mode === 'create'} accept={mode === 'extract' ? ACCEPT : undefined} hint={mode === 'create' ? 'Drop any files to bundle together' : 'ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, or RAR'} /> : <div className="space-y-5">
-      <div className="space-y-2">{files.map((file, index) => <FileChip key={`${file.name}-${index}`} name={file.name} sizeLabel={formatBytes(file.size)} onRemove={state === 'idle' ? () => removeFile(index) : undefined} />)}</div>
-      {mode === 'create' && state === 'idle' ? <div className="rounded-3xl border border-stone-200 bg-white p-5"><p className="mb-3 text-sm font-bold text-kiwi-ink">Archive format</p><div className="flex gap-2">{['zip','7z','tar'].map((fmt) => <button key={fmt} type="button" onClick={() => setArchiveFormat(fmt)} className={`focus-ring rounded-xl border px-4 py-2.5 text-sm font-bold uppercase transition ${archiveFormat === fmt ? 'border-kiwi-flesh bg-kiwi-flesh text-white' : 'border-stone-200 bg-white text-kiwi-ink/60 hover:border-kiwi-flesh/40'}`}>{fmt}</button>)}</div></div> : null}
-      {mode === 'extract' && state === 'idle' ? <div className="flex items-start gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-kiwi-ink/55"><PackageOpenIcon className="mt-0.5 h-4 w-4 shrink-0" />Download each extracted file, or use Download all to start the individual downloads together.</div> : null}
-      {state === 'idle' ? <button type="button" onClick={handleRun} className="focus-ring w-full rounded-2xl bg-kiwi-flesh px-5 py-3.5 text-sm font-bold text-white transition hover:bg-kiwi-flesh-600">{mode === 'create' ? `Create ${archiveFormat.toUpperCase()}` : 'Extract archive'}</button> : null}
-      {isBusy ? <ProgressPanel label={mode === 'create' ? 'Creating archive…' : 'Extracting archive…'} progress={progress} /> : null}
-      {state === 'done' && jobId ? <ResultPanel jobId={jobId} results={results} kind={kind ?? (mode === 'extract' ? 'archive_extract' : 'archive_create')} originalSize={files.length === 1 && mode === 'create' ? files[0].size : undefined} onReset={() => { reset(); setFiles([]) }} /> : null}
-      {state === 'failed' ? <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">{errorMessage}</div> : null}
-    </div>}
-  </PageShell>
+      {!files.length ? (
+        <Dropzone
+          onFiles={handleFiles}
+          multiple={mode === 'create'}
+          accept={mode === 'extract' ? ACCEPT_ARCHIVES : undefined}
+          hint={
+            mode === 'create'
+              ? 'Drop any files to bundle into an archive'
+              : 'ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, or RAR'
+          }
+        />
+      ) : (
+        <div className="space-y-6">
+          {/* Selected File(s) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold uppercase tracking-wider text-stone-500">
+                {mode === 'create' ? `Files to Bundle (${files.length})` : 'Target Archive'}
+              </span>
+              {state === 'idle' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    reset()
+                    setFiles([])
+                  }}
+                  className="text-sm font-semibold text-stone-400 hover:text-stone-700 transition"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            {files.map((file, idx) => (
+              <FileChip
+                key={`${file.name}-${idx}`}
+                name={file.name}
+                sizeLabel={formatBytes(file.size)}
+                onRemove={state === 'idle' ? () => removeFile(idx) : undefined}
+              />
+            ))}
+          </div>
+
+          {/* Creation Options */}
+          {mode === 'create' && state === 'idle' && (
+            <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-soft space-y-5">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500">
+                Archive Format & Naming
+              </h2>
+
+              <div className="flex gap-2.5">
+                {['zip', '7z', 'tar'].map((fmt) => (
+                  <button
+                    key={fmt}
+                    type="button"
+                    onClick={() => setArchiveFormat(fmt)}
+                    className={`flex-1 rounded-xl border py-3 text-sm font-extrabold uppercase transition ${
+                      archiveFormat === fmt
+                        ? 'border-kiwi-flesh bg-kiwi-flesh text-white shadow-soft ring-2 ring-kiwi-flesh/20'
+                        : 'border-stone-200/90 bg-white text-stone-700 hover:bg-stone-50 shadow-2xs'
+                    }`}
+                  >
+                    .{fmt}
+                  </button>
+                ))}
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-stone-700 mb-1.5">
+                  Archive Bundle Name
+                </label>
+                <TextField
+                  placeholder="e.g. project-archive"
+                  value={archiveName}
+                  onChange={(e) => setArchiveName(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Action Trigger */}
+          {state === 'idle' && (
+            <button
+              type="button"
+              onClick={handleRun}
+              disabled={isBusy}
+              className="focus-ring flex w-full items-center justify-center gap-2 rounded-2xl bg-kiwi-flesh py-4 text-sm sm:text-base font-bold text-white shadow-soft transition hover:bg-kiwi-flesh-600"
+            >
+              <span>{mode === 'create' ? 'Create Archive Package' : 'Extract Archive Contents'}</span>
+            </button>
+          )}
+
+          {/* Progress */}
+          {isBusy && (
+            <ProgressPanel
+              label={mode === 'create' ? 'Compressing entries into bundle…' : 'Extracting entries with traversal checks…'}
+              progress={progress}
+              onCancel={cancel}
+            />
+          )}
+
+          {/* Results */}
+          {state === 'done' && jobId && (
+            <ResultPanel
+              jobId={jobId}
+              results={results}
+              kind={kind ?? (mode === 'extract' ? 'archive_extract' : 'archive_create')}
+              originalSize={files.length === 1 ? files[0].size : undefined}
+              onReset={() => {
+                reset()
+                setFiles([])
+              }}
+            />
+          )}
+
+          {/* Error Message */}
+          {state === 'failed' && (
+            <div className="flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50/80 p-4 text-xs text-rose-700 animate-slide-up">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold">Archive operation failed</p>
+                <p className="mt-1 text-rose-600">{errorMessage}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </PageShell>
+  )
 }

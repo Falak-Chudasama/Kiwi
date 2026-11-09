@@ -1,5 +1,7 @@
+import { useMemo, useState } from 'react'
 import {
   Archive,
+  Check,
   FileAudio,
   FileImage,
   FileSpreadsheet,
@@ -7,27 +9,32 @@ import {
   FileType2,
   FileVideo2,
   Presentation,
+  Search,
+  X,
 } from 'lucide-react'
-import { categoryOf, CATEGORY_CLASSES, formatLabel } from './formatUtils'
+import { categoryOf, formatLabel } from './formatUtils'
 
 export interface FormatOption {
   ext: string
   supported: boolean
+  ready?: boolean
+  status?: 'ready' | 'requires_engine' | 'degraded_or_lossy' | 'content_dependent' | 'unsupported'
   reason?: string | null
   category?: string
+  strategy?: string | null
+  fidelity?: string | null
 }
 
 interface FormatPickerProps {
   options: FormatOption[]
   value: string | null
   onChange: (value: string) => void
-  /** Group label to promote to the top; it's also pushed to the bottom of the rest. */
   priorityGroup?: string
 }
 
 function IconFor({ ext }: { ext: string }) {
   const category = categoryOf(ext)
-  const className = 'h-4 w-4'
+  const className = 'h-4 w-4 shrink-0'
   if (category === 'pdf') return <FileType2 className={className} />
   if (category === 'image') return <FileImage className={className} />
   if (category === 'spreadsheet') return <FileSpreadsheet className={className} />
@@ -38,66 +45,163 @@ function IconFor({ ext }: { ext: string }) {
   return <FileText className={className} />
 }
 
+const CATEGORIES = [
+  'All',
+  'Documents',
+  'Images',
+  'Spreadsheets',
+  'Presentations',
+  'Media',
+  'Archives',
+] as const
+
 const GROUPS = [
-  ['Documents', ['pdf', 'docx', 'doc', 'odt', 'rtf', 'txt', 'md', 'html', 'htm', 'epub', 'tex', 'rst', 'org', 'xml']],
+  ['Documents', ['pdf', 'docx', 'doc', 'odt', 'rtf', 'txt', 'md', 'html', 'epub', 'tex', 'rst', 'org', 'xml']],
+  ['Images', ['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif', 'bmp', 'tiff', 'ico', 'heic', 'svg']],
   ['Spreadsheets', ['xlsx', 'xls', 'ods', 'csv']],
   ['Presentations', ['pptx', 'ppt', 'odp']],
-  ['Images', ['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif', 'bmp', 'tiff', 'tif', 'ico', 'heic', 'heif', 'svg']],
-  ['Audio', ['mp3', 'wav', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'wma']],
-  ['Video', ['mp4', 'mkv', 'webm', 'avi', 'mov', 'm4v', 'mpeg', 'mpg', '3gp']],
+  ['Media', ['mp3', 'wav', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'mp4', 'mkv', 'webm', 'mov']],
   ['Archives', ['zip', '7z', 'tar']],
 ] as const
 
 export function FormatPicker({ options, value, onChange, priorityGroup }: FormatPickerProps) {
-  const byExt = new Map(options.map((item) => [item.ext, item]))
-  // Priority group leads (e.g. Images on the image tools page); Documents,
-  // being the least relevant group there, sinks to the bottom.
-  const orderedGroups = priorityGroup
-    ? [...GROUPS].sort((a, b) => {
-        const rank = (label: string) => (label === priorityGroup ? 0 : label === 'Documents' ? 2 : 1)
-        return rank(a[0]) - rank(b[0])
+  const [search, setSearch] = useState('')
+  const [activeCategory, setActiveCategory] = useState<string>('All')
+
+  const byExt = useMemo(() => new Map(options.map((item) => [item.ext.toLowerCase(), item])), [options])
+
+  const filteredGroups = useMemo(() => {
+    const query = search.trim().toLowerCase()
+
+    return GROUPS.map(([label, exts]) => {
+      // Filter by category tab
+      if (activeCategory !== 'All') {
+        if (activeCategory === 'Media' && label !== 'Media') return null
+        if (activeCategory !== 'Media' && label !== activeCategory) return null
+      }
+
+      // Filter by search query
+      const matchingExts = exts.filter((ext) => {
+        if (!query) return true
+        const option = byExt.get(ext)
+        return (
+          ext.toLowerCase().includes(query) ||
+          (option?.reason && option.reason.toLowerCase().includes(query)) ||
+          (option?.strategy && option.strategy.toLowerCase().includes(query))
+        )
       })
-    : GROUPS
+
+      const items = matchingExts.map((ext) => byExt.get(ext)).filter(Boolean) as FormatOption[]
+      if (!items.length) return null
+
+      return { label, items }
+    }).filter(Boolean) as { label: string; items: FormatOption[] }[]
+  }, [byExt, search, activeCategory])
 
   return (
-    <div className="space-y-6">
-      {orderedGroups.map(([label, exts]) => {
-        const items = exts.map((ext) => byExt.get(ext)).filter(Boolean) as FormatOption[]
-        if (!items.length) return null
-        return (
-          <section key={label}>
-            <div className="mb-2.5 flex items-center gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-kiwi-ink/35">{label}</span>
-              <span className="h-px flex-1 bg-stone-100" />
+    <div className="space-y-5">
+      {/* Search and Category Filter Tray */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search formats (e.g. webp, docx, pdf)..."
+            className="focus-ring w-full rounded-xl border border-stone-200/90 bg-white pl-11 pr-10 py-2.5 text-sm sm:text-base text-stone-900 placeholder:text-stone-400 transition hover:border-stone-300 focus:border-kiwi-flesh"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-stone-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Category Pills */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {CATEGORIES.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setActiveCategory(cat)}
+              className={`rounded-xl px-3 py-1.5 text-xs sm:text-sm font-semibold transition ${
+                activeCategory === cat
+                  ? 'bg-stone-900 text-white shadow-xs'
+                  : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Format Grid Groups */}
+      {filteredGroups.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-stone-200 py-10 text-center text-sm text-stone-400">
+          No formats match &ldquo;{search}&rdquo;.
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {filteredGroups.map(({ label, items }) => (
+            <div key={label}>
+              <div className="mb-2.5 flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                  {label}
+                </span>
+                <span className="h-px flex-1 bg-stone-200/70" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {items.map((opt) => {
+                  const isSelected = opt.ext === value
+                  const isAvailable = opt.supported && opt.ready !== false
+                  const requiresEngine = opt.supported && opt.ready === false
+
+                  return (
+                    <button
+                      key={opt.ext}
+                      type="button"
+                      disabled={!isAvailable}
+                      onClick={() => onChange(opt.ext)}
+                      title={opt.reason || undefined}
+                      className={`group relative flex items-center justify-between rounded-xl border p-3 text-left text-sm transition ${
+                        isSelected
+                          ? 'border-kiwi-flesh bg-kiwi-flesh text-white shadow-soft ring-2 ring-kiwi-flesh/20 font-bold'
+                          : isAvailable
+                            ? 'border-stone-200/90 bg-white text-stone-800 hover:border-kiwi-flesh/50 hover:bg-stone-50 shadow-2xs'
+                            : 'cursor-not-allowed border-stone-100 bg-stone-50 text-stone-300 opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <IconFor ext={opt.ext} />
+                        <span className="font-semibold truncate text-sm">{formatLabel(opt.ext)}</span>
+                      </div>
+
+                      {isSelected ? (
+                        <Check className="h-4 w-4 shrink-0 text-white" />
+                      ) : requiresEngine ? (
+                        <span className="text-[10px] font-semibold text-amber-700 bg-amber-100/70 rounded px-1.5 py-0.5">
+                          Engine
+                        </span>
+                      ) : opt.status === 'content_dependent' ? (
+                        <span className="text-[10px] font-medium text-stone-400 bg-stone-100 rounded px-1.5 py-0.5">
+                          Tables
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-5">
-              {items.map((option) => {
-                const active = option.ext === value
-                const categoryClass = CATEGORY_CLASSES[categoryOf(option.ext)]
-                return (
-                  <button
-                    key={option.ext}
-                    type="button"
-                    disabled={!option.supported}
-                    onClick={() => onChange(option.ext)}
-                    title={option.supported ? undefined : option.reason ?? 'Unavailable'}
-                    className={`focus-ring flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-bold transition ${
-                      active
-                        ? 'border-kiwi-flesh bg-kiwi-flesh text-white shadow-soft'
-                        : option.supported
-                          ? `${categoryClass} hover:-translate-y-0.5 hover:shadow-soft`
-                          : 'cursor-not-allowed border-stone-100 bg-stone-50 text-stone-300 opacity-50'
-                    }`}
-                  >
-                    <span className="shrink-0"><IconFor ext={option.ext} /></span>
-                    <span>{formatLabel(option.ext)}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-        )
-      })}
+          ))}
+        </div>
+      )}
     </div>
   )
 }

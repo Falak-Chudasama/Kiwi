@@ -1,31 +1,36 @@
-import { type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
-import { ArrowLeftIcon } from '../ui/icons'
+import type { ReactNode } from 'react'
 
 interface PageShellProps {
   title: string
-  description: string
-  icon: ReactNode
+  description?: string
+  icon?: ReactNode
   children: ReactNode
 }
 
 export function PageShell({ title, description, icon, children }: PageShellProps) {
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-9">
-      <Link to="/" className="focus-ring inline-flex items-center gap-1.5 rounded-lg text-sm font-medium text-kiwi-ink/50 transition hover:text-kiwi-ink">
-        <ArrowLeftIcon className="h-4 w-4" />
-        Home
-      </Link>
-
-      <div className="mt-4 flex items-start gap-3.5">
-        <div className="rounded-2xl bg-kiwi-flesh-100 p-3 text-kiwi-flesh-700">{icon}</div>
-        <div>
-          <h1 className="font-heading text-2xl font-bold tracking-tight text-kiwi-ink sm:text-3xl">{title}</h1>
-          <p className="mt-1 text-sm leading-6 text-kiwi-ink/50">{description}</p>
+    <main className="mx-auto w-full max-w-4xl px-4 py-8 pb-24 sm:py-12 sm:pb-16">
+      <header className="mb-9">
+        <div className="flex items-center gap-3">
+          {icon && (
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 text-stone-800 shadow-2xs [&>svg]:h-5 [&>svg]:w-5">
+              {icon}
+            </div>
+          )}
+          <h1 className="text-2xl font-extrabold tracking-tight text-stone-900 sm:text-3xl font-sans">
+            {title}
+          </h1>
         </div>
-      </div>
+        {description && (
+          <p className="mt-2.5 max-w-2xl text-sm sm:text-base text-stone-600 leading-relaxed font-sans">
+            {description}
+          </p>
+        )}
+      </header>
 
-      <div className="mt-6">{children}</div>
+      <section className="space-y-7">
+        {children}
+      </section>
     </main>
   )
 }
