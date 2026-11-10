@@ -2,7 +2,7 @@
 
   <img src="client/public/kiwi-icon.svg" alt="Kiwi Logo" width="96" height="96" />
 
-  # Kiwi 🥝
+  # Kiwi
 
   **The quiet, private, local-first file conversion and compression workspace.**
 
