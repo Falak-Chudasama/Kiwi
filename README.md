@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="kiwi-icon.svg" alt="Kiwi Logo" width="96" height="96" />
+  <img src="client/public/kiwi-icon.svg" alt="Kiwi Logo" width="96" height="96" />
 
   # Kiwi 🥝
 
