@@ -72,7 +72,7 @@ export function Header() {
               {isDark ? (
                 <Sun className="h-4.5 w-4.5 text-kiwi-lime transition-transform duration-200 hover:rotate-45" />
               ) : (
-                <Moon className="h-4.5 w-4.5 text-stone-600 transition-transform duration-200 hover:-rotate-12" />
+                <Moon className="h-4.5 w-4.5 text-kiwi-flesh transition-transform duration-200 hover:-rotate-12" />
               )}
             </button>
           </nav>
