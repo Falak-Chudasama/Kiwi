@@ -10,6 +10,7 @@ const ImageConvertPage = lazy(() => import('./pages/ImageConvertPage'))
 const PdfToolsPage = lazy(() => import('./pages/PdfToolsPage'))
 const CompressPage = lazy(() => import('./pages/CompressPage'))
 const ArchivesPage = lazy(() => import('./pages/ArchivesPage'))
+const ScannerPage = lazy(() => import('./pages/ScannerPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 
 function LoadingFallback() {
@@ -36,6 +37,8 @@ export default function App() {
                 <Route path="/pdf" element={<PdfToolsPage />} />
                 <Route path="/compress" element={<CompressPage />} />
                 <Route path="/archives" element={<ArchivesPage />} />
+                <Route path="/scan" element={<ScannerPage />} />
+                <Route path="/scanner" element={<ScannerPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </Suspense>

@@ -217,3 +217,80 @@ export async function fetchSystemStatus(signal?: AbortSignal): Promise<SystemSta
   const res = await fetch('/api/system/status', { signal })
   return parseOrThrow(res)
 }
+
+export interface ScannerQuality {
+  overall_score: number
+  sharpness_score: number
+  exposure_score: number
+  glare_score: number
+  uniformity_score: number
+  is_sharp: boolean
+  is_well_exposed: boolean
+  has_glare: boolean
+  has_uneven_light: boolean
+  suggestions: string[]
+}
+
+export interface DocumentDetectResponse {
+  width: number
+  height: number
+  corners: [number, number][]
+  confidence: number
+  detected_auto: boolean
+  aspect_ratio: number
+  document_type_hint: string
+  quality: ScannerQuality
+}
+
+export interface ScannerPresetSettings {
+  filter_mode: 'color' | 'grayscale' | 'bw' | 'photo'
+  brightness: number
+  contrast: number
+  exposure: number
+  shadows: number
+  highlights: number
+  whites: number
+  blacks: number
+  gamma: number
+  sharpen: number
+  denoise: number
+  remove_shadows: boolean
+  preserve_color_stamps: boolean
+  dewarp_enabled: boolean
+  ocr_enabled: boolean
+  ocr_language: string
+}
+
+export interface ScannerPreset {
+  id: string
+  name: string
+  description: string
+  is_builtin: boolean
+  version: number
+  settings: ScannerPresetSettings
+}
+
+export async function detectDocument(file: File, signal?: AbortSignal): Promise<DocumentDetectResponse> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch('/api/v1/scanner/detect', {
+    method: 'POST',
+    body: fd,
+    signal,
+  })
+  return parseOrThrow(res)
+}
+
+export async function fetchScannerPresets(signal?: AbortSignal): Promise<ScannerPreset[]> {
+  const res = await fetch('/api/v1/scanner/presets', { signal })
+  return parseOrThrow(res)
+}
+
+export async function submitScannerJob(formData: FormData, signal?: AbortSignal): Promise<JobResponse> {
+  const res = await fetch('/api/v1/scanner/jobs', {
+    method: 'POST',
+    body: formData,
+    signal,
+  })
+  return parseOrThrow(res)
+}

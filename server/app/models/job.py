@@ -32,6 +32,7 @@ class JobKind(str, Enum):
     COMPRESS_FILE = "compress_file"
     ARCHIVE_CREATE = "archive_create"
     ARCHIVE_EXTRACT = "archive_extract"
+    SCANNER_PROCESS = "scanner_process"
 
 
 @dataclass

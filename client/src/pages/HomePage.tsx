@@ -3,6 +3,7 @@ import {
   Archive,
   ArrowRight,
   ArrowRightLeft,
+  Camera,
   FileText,
   Image as ImageIcon,
   Minimize2,
@@ -16,6 +17,12 @@ const SHORTCUTS = [
     title: 'Universal Converter',
     description: 'Convert between documents, markup, spreadsheets, and media.',
     icon: ArrowRightLeft,
+  },
+  {
+    to: '/scan',
+    title: 'Document Scanner',
+    description: 'Offline camera capture, perspective crop, shadow removal, and OCR.',
+    icon: Camera,
   },
   {
     to: '/images',

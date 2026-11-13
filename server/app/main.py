@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.files import cleanup_stale_workspaces
-from app.routes import archives, compression, documents, images, jobs, pdf, system
+from app.routes import archives, compression, documents, images, jobs, pdf, scanner, system
 from app.workers.handlers import register_all_handlers
 from app.workers.queue import task_queue
 
@@ -24,6 +24,7 @@ app.include_router(pdf.router)
 app.include_router(compression.router)
 app.include_router(archives.router)
 app.include_router(jobs.router)
+app.include_router(scanner.router)
 app.include_router(system.router)
 
 

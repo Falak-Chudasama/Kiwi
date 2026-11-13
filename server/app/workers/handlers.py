@@ -3,6 +3,9 @@ from pathlib import Path
 from app.core.files import output_dir
 from app.models.job import Job
 from app.services import archives, compression, documents, images, pdf_tools, universal
+from app.services.scanner.pipeline import PageScanRequest, scan_pipeline
+from app.services.scanner.presets import PresetSettings
+from app.workers.job_store import job_store
 from app.workers.queue import task_queue
 
 
@@ -114,6 +117,36 @@ def handle_archive_extract(job: Job) -> list[str]:
     return [str(p) for p in archives.extract_archive(_paths(job)[0], output_dir(job.workspace))]
 
 
+def handle_scanner_process(job: Job) -> list[str]:
+    input_paths = _paths(job)
+    crops = job.payload.get("crops", [])
+    rotations = job.payload.get("rotations", [])
+    preset_id = job.payload.get("preset_id", "auto")
+    custom_dict = job.payload.get("custom_settings")
+    output_format = job.payload.get("output_format", "pdf_searchable")
+
+    custom_settings = PresetSettings.model_validate(custom_dict) if custom_dict else None
+
+    pages: list[PageScanRequest] = []
+    for i, path in enumerate(input_paths):
+        crop = crops[i] if i < len(crops) else None
+        rot = rotations[i] if i < len(rotations) else 0
+        pages.append(PageScanRequest(image_path=path, crop_corners=crop, rotation=rot))
+
+    def on_progress(stage: str, pct: int):
+        job_store.update(job.id, progress=pct)
+
+    result = scan_pipeline.process(
+        pages=pages,
+        out_dir=output_dir(job.workspace),
+        preset_id=preset_id,
+        custom_settings=custom_settings,
+        output_format=output_format,
+        progress_cb=on_progress,
+    )
+    return [str(p) for p in result.output_files]
+
+
 def register_all_handlers() -> None:
     task_queue.register("document_convert", handle_document_convert)
     task_queue.register("image_convert", handle_image_convert)
@@ -130,3 +163,4 @@ def register_all_handlers() -> None:
     task_queue.register("compress_file", handle_compress_file)
     task_queue.register("archive_create", handle_archive_create)
     task_queue.register("archive_extract", handle_archive_extract)
+    task_queue.register("scanner_process", handle_scanner_process)

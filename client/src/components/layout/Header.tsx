@@ -2,6 +2,7 @@ import { Link, NavLink } from 'react-router-dom'
 import {
   Archive,
   ArrowRightLeft,
+  Camera,
   FileText,
   Image as ImageIcon,
   Minimize2,
@@ -13,6 +14,7 @@ import { useTheme } from '../ui/ThemeProvider'
 
 const NAV_ITEMS = [
   { to: '/convert', label: 'Convert', icon: ArrowRightLeft },
+  { to: '/scan', label: 'Scan', icon: Camera },
   { to: '/images', label: 'Images', icon: ImageIcon },
   { to: '/pdf', label: 'PDF', icon: FileText },
   { to: '/compress', label: 'Compress', icon: Minimize2 },

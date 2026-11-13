@@ -180,30 +180,41 @@ def _pdf_to_html(input_path: Path, output_path: Path) -> Path:
 
 
 def _pdf_to_docx(input_path: Path, output_path: Path) -> Path:
-    """Convert a PDF to an editable DOCX using pdf2docx.
+    """Convert a PDF to an editable DOCX with structured fidelity.
 
-    pdf2docx reconstructs real Word paragraphs, native tables (not text
-    dumped into a single column), fonts, and image placement by analyzing
-    the PDF's layout structure -- this is a purpose-built converter rather
-    than a hand-rolled text-block dump, and it is what produces documents
-    that actually look like the source PDF when opened in Word.
-
-    Scanned pages have no text for pdf2docx to find (it reads the PDF's
-    text layer, it doesn't run OCR itself), so before handing off, any page
-    that `pdf_analysis` flags as needing OCR gets an invisible OCR text
-    layer burned in first (fitz render_mode=3, "hidden text").
-
-    pdf2docx has a dedicated `ocr` setting for exactly this: ocr=0 (default)
-    ignores hidden text as noise, ocr=2 treats the *entire* document as
-    OCR-sourced and extracts only the hidden text (dropping images). Since
-    that's a single document-wide flag, a fully-scanned PDF can be converted
-    in one ocr=2 pass, but a *mixed* PDF (some native pages, some scanned)
-    can't -- one pass would either drop the scanned pages' text (ocr=0) or
-    drop every native page's images (ocr=2). For that case this splits the
-    PDF into single-document-mode runs per contiguous page group and merges
-    the resulting docx files, so each page gets the extraction mode that
-    actually matches its content.
+    Uses Kiwi's unified document representation and PyMuPDF structured
+    extraction to reconstruct real Word tables, native typography, cell
+    shading/borders, and scaled graphics. Validates conversion fidelity
+    and falls back to pdf2docx / hybrid OCR composer if needed.
     """
+    import logging
+    logger = logging.getLogger("kiwi.conversion")
+
+    # 1. Attempt structured PyMuPDF -> DocumentIR -> python-docx reconstruction
+    try:
+        from app.services.pdf_structured_extract import extract_pdf_ir
+        from app.services.docx_reconstruct import reconstruct_docx
+        from app.services.conversion_fidelity import validate_docx_fidelity
+
+        doc_ir = extract_pdf_ir(input_path)
+        temp_out = output_path.with_suffix(".structured.docx")
+        reconstruct_docx(doc_ir, temp_out)
+
+        if temp_out.exists() and temp_out.stat().st_size > 0:
+            report = validate_docx_fidelity(input_path, temp_out)
+            logger.info("Structured conversion fidelity score: %.2f (passed=%s)", report.overall_score, report.passed)
+            # If high fidelity, adopt output
+            if report.passed or not input_path.stat().st_size:
+                if output_path.exists():
+                    output_path.unlink()
+                temp_out.rename(output_path)
+                return output_path
+            else:
+                temp_out.unlink(missing_ok=True)
+    except Exception as exc:
+        logger.warning("Structured DOCX reconstruction encountered: %s. Falling back to pdf2docx pipeline.", exc)
+
+    # 2. Resilient fallback pipeline (pdf2docx with OCR layer burn-in)
     from app.services.pdf_analysis import analyze_pdf
     from app.services.pdf_ocr import ocr_available
 
