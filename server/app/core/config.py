@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     cleanup_interval_seconds: int = 15
     worker_count: int = 2
     cors_origins: list[str] = [
+        "https://kiwi.jam",
+        "http://kiwi.jam",
+        "https://api.kiwi.jam",
+        "http://api.kiwi.jam",
+        "http://127.0.0.3:10000",
+        "http://127.0.0.3",
+        "http://localhost:10000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
