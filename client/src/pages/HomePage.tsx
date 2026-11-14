@@ -59,11 +59,11 @@ export default function HomePage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-8 pb-24 sm:py-14 sm:pb-20">
+    <main className="mx-auto w-full max-w-4xl px-4 pt-6 sm:pt-8 pb-24 sm:pb-20">
       {/* Hero Header */}
       <section className="text-center mb-10">
         <div className="inline-flex items-center justify-center mb-5">
-          <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white dark:bg-[#181915] p-2.5 shadow-soft border border-black/[0.05] dark:border-white/[0.08]">
+          <div className="flex h-16 w-16 items-center justify-center rounded-3xl glass-card p-2.5 shadow-soft">
             <img src={kiwiIcon} alt="Kiwi" className="h-11 w-11 object-contain" />
           </div>
         </div>
@@ -98,10 +98,10 @@ export default function HomePage() {
             <Link
               key={to}
               to={to}
-              className="group flex flex-col justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft transition hover:border-kiwi-flesh/50 dark:hover:border-kiwi-lime/50 hover:shadow-lift"
+              className="group flex flex-col justify-between rounded-2xl glass-card p-6 shadow-soft transition hover:border-kiwi-flesh/50 dark:hover:border-kiwi-lime/50 hover:shadow-lift hover:bg-white/45 dark:hover:bg-white/[0.05]"
             >
               <div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 transition group-hover:bg-kiwi-flesh/10 dark:group-hover:bg-kiwi-lime/10 group-hover:text-kiwi-flesh-700 dark:group-hover:text-kiwi-lime">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl glass-card text-stone-700 dark:text-stone-300 transition group-hover:bg-kiwi-flesh/10 dark:group-hover:bg-kiwi-lime/10 group-hover:text-kiwi-flesh-700 dark:group-hover:text-kiwi-lime">
                   <Icon className="h-6 w-6" />
                 </div>
                 <h3 className="mt-4 text-base sm:text-lg font-bold text-stone-900 dark:text-stone-100 font-sans group-hover:text-kiwi-flesh-700 dark:group-hover:text-kiwi-lime transition">

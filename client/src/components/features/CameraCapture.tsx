@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react'
 import { Camera, FlipHorizontal, Zap, ZapOff, X, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { playBack, playEnter } from '../../lib/sound'
 
 interface CameraCaptureProps {
   onCapture: (capturedFile: File) => void
@@ -8,6 +9,7 @@ interface CameraCaptureProps {
 
 export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment')
   const [torchOn, setTorchOn] = useState<boolean>(false)
@@ -17,13 +19,29 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
   const [stabilityFeedback, setStabilityFeedback] = useState<string>('Aligning document...')
   const [isStable, setIsStable] = useState<boolean>(false)
 
+  // Synchronously stop all media tracks and release hardware
+  const stopStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop()
+        } catch {
+          // ignore
+        }
+      })
+      streamRef.current = null
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    setStream(null)
+  }, [])
+
   // Start camera stream
   const startCamera = useCallback(async (facing: 'environment' | 'user') => {
     try {
       setCameraError(null)
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop())
-      }
+      stopStream()
 
       const constraints: MediaStreamConstraints = {
         audio: false,
@@ -35,6 +53,7 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
       }
 
       const mediaStream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = mediaStream
       setStream(mediaStream)
 
       if (videoRef.current) {
@@ -51,16 +70,20 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
     } catch (err: any) {
       setCameraError(err.message || 'Unable to access camera. Please verify permissions.')
     }
-  }, [stream])
+  }, [stopStream])
 
   useEffect(() => {
     startCamera(facingMode)
     return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop())
-      }
+      stopStream()
     }
-  }, [facingMode])
+  }, [facingMode, startCamera, stopStream])
+
+  const handleCancel = () => {
+    stopStream()
+    playBack()
+    onCancel()
+  }
 
   // Toggle Torch/Flash
   const toggleTorch = async () => {
@@ -138,6 +161,8 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
           const imageCapture = new (window as any).ImageCapture(track)
           const blob: Blob = await imageCapture.takePhoto()
           const file = new File([blob], `scan_${Date.now()}.jpg`, { type: 'image/jpeg' })
+          stopStream()
+          playEnter()
           onCapture(file)
           return
         } catch {
@@ -158,6 +183,8 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
             (blob) => {
               if (blob) {
                 const file = new File([blob], `scan_${Date.now()}.jpg`, { type: 'image/jpeg' })
+                stopStream()
+                playEnter()
                 onCapture(file)
               }
             },
@@ -177,7 +204,7 @@ export function CameraCapture({ onCapture, onCancel }: CameraCaptureProps) {
       <div className="absolute top-6 inset-x-6 z-20 flex items-center justify-between text-white">
         <button
           type="button"
-          onClick={onCancel}
+          onClick={handleCancel}
           className="flex items-center justify-center w-10 h-10 rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 transition"
           aria-label="Close camera"
         >

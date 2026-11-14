@@ -192,5 +192,15 @@ def download_scanner_result(job_id: str, file_index: int, response: Response):
     if not file_path.exists():
         raise HTTPException(status_code=410, detail="Output file is no longer available.")
 
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    return FileResponse(path=file_path, filename=result.name, media_type=result.media_type)
+    headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Access-Control-Expose-Headers": "Content-Disposition",
+    }
+    return FileResponse(
+        path=file_path,
+        filename=result.name,
+        media_type=result.media_type,
+        content_disposition_type="attachment",
+        headers=headers,
+    )

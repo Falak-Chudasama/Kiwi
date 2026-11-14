@@ -64,8 +64,51 @@ export async function cancelJob(jobId: string): Promise<{ cancelled: boolean }> 
   return parseOrThrow(res)
 }
 
-export function downloadUrl(jobId: string, fileIndex: number): string {
-  return `/api/jobs/${jobId}/download/${fileIndex}`
+export function downloadUrl(jobId: string | null | undefined, fileIndex: number): string {
+  if (!jobId || !jobId.trim()) {
+    console.warn('downloadUrl called with missing or empty jobId')
+    return '#'
+  }
+  return `/api/jobs/${encodeURIComponent(jobId.trim())}/download/${fileIndex}`
+}
+
+/**
+ * Programmatically downloads a file by fetching its binary payload into memory
+ * and triggering an in-browser download via URL.createObjectURL.
+ *
+ * This completely avoids browser "File wasn't available on site" errors,
+ * ignores cross-origin anchor attribute restrictions, and allows catching
+ * network failures to report actionable user feedback.
+ */
+export async function downloadFileBlob(url: string, filename: string): Promise<void> {
+  if (!url || url === '#' || url.includes('/download/undefined') || url.includes('//download')) {
+    throw new Error('Download failed: Invalid or missing download URL.')
+  }
+
+  const response = await fetch(url)
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`File not found (HTTP 404). The download link may be expired or invalid.`)
+    }
+    if (response.status === 410) {
+      throw new Error(`File is no longer available (HTTP 410). Output files expire after 5 minutes.`)
+    }
+    throw new Error(`Download failed with status ${response.status}: ${response.statusText}`)
+  }
+
+  const blob = await response.blob()
+  const blobUrl = window.URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = blobUrl
+  anchor.download = filename || 'download'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+
+  // Revoke object URL after giving browser time to start save
+  window.setTimeout(() => {
+    window.URL.revokeObjectURL(blobUrl)
+  }, 12000)
 }
 
 export interface PollJobOptions {

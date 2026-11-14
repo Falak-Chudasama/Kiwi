@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { AlertCircleIcon, CheckCircleIcon, CloseIcon } from './icons'
+import { playFailed, playNotification } from '../../lib/sound'
 
 type ToastKind = 'success' | 'error' | 'info'
 
@@ -38,6 +39,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (kind: ToastKind, message: string) => {
       const id = crypto.randomUUID()
       setToasts((prev) => [...prev, { id, kind, message }])
+      if (kind === 'error') {
+        playFailed()
+      } else {
+        playNotification()
+      }
       window.setTimeout(() => dismiss(id), 4200)
     },
     [dismiss],
@@ -56,7 +62,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={toast.id}
             role="alert"
-            className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white/95 dark:bg-[#181915]/95 px-4 py-3 text-sm text-stone-900 dark:text-stone-100 shadow-lift backdrop-blur-md animate-slide-up"
+            className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-black/[0.08] dark:border-white/[0.12] bg-white/75 dark:bg-[#181915]/75 px-4 py-3 text-sm text-stone-900 dark:text-stone-100 shadow-lift backdrop-blur-xl animate-slide-up"
           >
             {iconByKind[toast.kind]}
             <span className="flex-1 text-xs font-medium leading-relaxed">{toast.message}</span>

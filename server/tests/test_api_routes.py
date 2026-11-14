@@ -71,3 +71,46 @@ def test_job_cancel_not_found(client: TestClient):
     resp = client.post("/api/jobs/nonexistent-id-12345/cancel")
     assert resp.status_code == 404
 
+
+def test_job_download_pipeline(client: TestClient, tmp_path):
+    from pathlib import Path
+    from app.models.job import Job, JobKind, ResultFile, JobStatus
+    from app.workers.job_store import job_store
+
+    test_file = tmp_path / "result.txt"
+    test_file.write_text("Kiwi download pipeline verified.", encoding="utf-8")
+
+    rf = ResultFile(
+        path=str(test_file),
+        name="result.txt",
+        size=test_file.stat().st_size,
+        media_type="text/plain",
+    )
+    job = Job(
+        kind=JobKind.DOCUMENT_CONVERT,
+        payload={},
+        workspace=tmp_path,
+        status=JobStatus.DONE,
+        result_files=[rf],
+    )
+    job_store.add(job)
+
+    # 1. Download via /api/jobs/{job_id}/download/0
+    resp = client.get(f"/api/jobs/{job.id}/download/0")
+    assert resp.status_code == 200
+    assert resp.content == b"Kiwi download pipeline verified."
+    assert "attachment" in resp.headers.get("content-disposition", "")
+    assert 'filename="result.txt"' in resp.headers.get("content-disposition", "")
+
+    # 2. Download via /api/v1/scanner/jobs/{job_id}/download/0
+    resp_scanner = client.get(f"/api/v1/scanner/jobs/{job.id}/download/0")
+    assert resp_scanner.status_code == 200
+    assert resp_scanner.content == b"Kiwi download pipeline verified."
+    assert "attachment" in resp_scanner.headers.get("content-disposition", "")
+
+    # 3. Invalid index
+    assert client.get(f"/api/jobs/{job.id}/download/99").status_code == 404
+    # 4. Invalid job
+    assert client.get("/api/jobs/fake-id/download/0").status_code == 404
+
+

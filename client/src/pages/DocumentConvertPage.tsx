@@ -18,6 +18,7 @@ import { useJobRunner } from '../hooks/useJobRunner'
 import { fetchTargets, type TargetOption } from '../lib/api'
 import { useToast } from '../components/ui/ToastProvider'
 import { categoryOf, extensionOf } from '../components/features/formatUtils'
+import { playEnter } from '../lib/sound'
 
 export default function DocumentConvertPage() {
   const location = useLocation()
@@ -116,6 +117,7 @@ export default function DocumentConvertPage() {
 
   const handleConvert = async () => {
     if (!files.length || !targetExt) return
+    playEnter()
     const formData = new FormData()
     // For single file, use 'file'; for multiple, send first file or submit individually
     formData.append('file', files[0])
@@ -175,9 +177,32 @@ export default function DocumentConvertPage() {
             ))}
           </div>
 
+          {/* Conversion Action Bar - Prominently positioned above format picker */}
+          {state === 'idle' && targetExt && (
+            <div className="glass-panel flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl p-5 sm:p-6 shadow-soft">
+              <div className="flex items-center gap-3 text-sm sm:text-base text-stone-700 dark:text-stone-300 min-w-0">
+                <CheckCircle2 className="h-5 w-5 text-kiwi-flesh-700 dark:text-kiwi-lime shrink-0" />
+                <span className="font-bold text-stone-900 dark:text-stone-100 truncate max-w-xs">{files[0].name}</span>
+                <ArrowRight className="h-4 w-4 text-stone-400 dark:text-stone-500 shrink-0" />
+                <span className="rounded-lg bg-kiwi-flesh/10 dark:bg-kiwi-lime/10 px-3 py-1 text-sm font-extrabold text-kiwi-flesh-700 dark:text-kiwi-lime uppercase shrink-0">
+                  {targetExt}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleConvert}
+                disabled={!targetExt || isBusy}
+                className="btn-glass-primary shrink-0"
+              >
+                <span>Convert File</span>
+              </button>
+            </div>
+          )}
+
           {/* Target Format Picker */}
           {state === 'idle' && (
-            <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft">
+            <div className="glass-panel rounded-2xl p-6 shadow-soft">
               <div className="mb-5 flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
@@ -196,29 +221,6 @@ export default function DocumentConvertPage() {
                 value={targetExt}
                 onChange={setTargetExt}
               />
-            </div>
-          )}
-
-          {/* Conversion Action Bar */}
-          {state === 'idle' && targetExt && (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-5 sm:p-6 shadow-soft">
-              <div className="flex items-center gap-3 text-sm sm:text-base text-stone-700 dark:text-stone-300">
-                <CheckCircle2 className="h-5 w-5 text-kiwi-flesh-700 dark:text-kiwi-lime shrink-0" />
-                <span className="font-bold text-stone-900 dark:text-stone-100 truncate max-w-xs">{files[0].name}</span>
-                <ArrowRight className="h-4 w-4 text-stone-400 dark:text-stone-500" />
-                <span className="rounded-lg bg-kiwi-flesh/10 dark:bg-kiwi-lime/10 px-3 py-1 text-sm font-extrabold text-kiwi-flesh-700 dark:text-kiwi-lime uppercase">
-                  {targetExt}
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleConvert}
-                disabled={!targetExt || isBusy}
-                className="focus-ring inline-flex items-center justify-center gap-2 rounded-2xl bg-kiwi-flesh px-8 py-3.5 text-sm sm:text-base font-bold text-white shadow-soft transition hover:bg-kiwi-flesh-600 disabled:opacity-50"
-              >
-                <span>Convert File</span>
-              </button>
             </div>
           )}
 

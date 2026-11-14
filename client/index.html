@@ -10,12 +10,16 @@
     <script>
       (function() {
         try {
-          var saved = localStorage.getItem('kiwi_theme');
-          var isDark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var params = new URLSearchParams(window.location.search);
+          var urlTheme = params.get('theme');
+          var saved = urlTheme || localStorage.getItem('kiwi_theme');
+          var isDark = urlTheme === 'light' ? false : (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches));
           if (isDark) {
             document.documentElement.classList.add('dark');
             var meta = document.querySelector('meta[name="theme-color"]');
             if (meta) meta.setAttribute('content', '#121310');
+          } else {
+            document.documentElement.classList.remove('dark');
           }
         } catch (e) {}
       })();

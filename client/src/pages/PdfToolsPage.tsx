@@ -19,6 +19,7 @@ import { FileChip, formatBytes } from '../components/features/FileChip'
 import { ProgressPanel } from '../components/features/ProgressPanel'
 import { ResultPanel } from '../components/features/ResultPanel'
 import { TextField } from '../components/ui/TextField'
+import { CustomSelect } from '../components/ui/CustomSelect'
 import { useJobRunner } from '../hooks/useJobRunner'
 
 type Operation =
@@ -200,7 +201,7 @@ export default function PdfToolsPage() {
       icon={<FileText className="h-4 w-4" />}
     >
       {/* Operation Tabs Strip */}
-      <div className="flex flex-wrap gap-2 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-2 shadow-soft">
+      <div className="glass-panel flex flex-wrap gap-2 rounded-2xl p-2 shadow-soft">
         {OPERATIONS.map(({ value, label, icon: Icon }) => (
           <button
             key={value}
@@ -262,7 +263,7 @@ export default function PdfToolsPage() {
 
           {/* Contextual Operation Configuration */}
           {state === 'idle' && (
-            <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft space-y-5">
+            <div className="glass-panel rounded-2xl p-6 shadow-soft space-y-5">
               <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 {currentOp.label} Options
               </h2>
@@ -302,30 +303,30 @@ export default function PdfToolsPage() {
               {operation === 'to_images' && (
                 <div className="grid gap-3 sm:grid-cols-2 text-xs">
                   <div>
-                    <label className="block font-semibold text-stone-700 dark:text-stone-300 mb-1">Image Format</label>
-                    <select
+                    <CustomSelect
+                      label="Image Format"
                       value={imageFormat}
-                      onChange={(e) => setImageFormat(e.target.value)}
-                      className="focus-ring w-full rounded-xl border border-stone-200/80 dark:border-white/[0.08] bg-white dark:bg-[#181915] px-3 py-2 text-xs text-stone-900 dark:text-stone-100"
-                    >
-                      <option value="png">PNG (Lossless)</option>
-                      <option value="jpg">JPG (Photo/Document)</option>
-                      <option value="webp">WebP (Efficient)</option>
-                      <option value="tiff">TIFF (Archive)</option>
-                      <option value="bmp">BMP (Raw)</option>
-                    </select>
+                      onChange={setImageFormat}
+                      options={[
+                        { value: 'png', label: 'PNG (Lossless)', sublabel: 'High-detail graphics' },
+                        { value: 'jpg', label: 'JPG (Photo/Document)', sublabel: 'Standard compressed' },
+                        { value: 'webp', label: 'WebP (Efficient)', sublabel: 'Modern web format' },
+                        { value: 'tiff', label: 'TIFF (Archive)', sublabel: 'Uncompressed archival' },
+                        { value: 'bmp', label: 'BMP (Raw)', sublabel: 'Uncompressed bitmap' },
+                      ]}
+                    />
                   </div>
                   <div>
-                    <label className="block font-semibold text-stone-700 dark:text-stone-300 mb-1">Render Quality (DPI)</label>
-                    <select
+                    <CustomSelect
+                      label="Render Quality (DPI)"
                       value={dpi}
-                      onChange={(e) => setDpi(Number(e.target.value))}
-                      className="focus-ring w-full rounded-xl border border-stone-200/80 dark:border-white/[0.08] bg-white dark:bg-[#181915] px-3 py-2 text-xs text-stone-900 dark:text-stone-100"
-                    >
-                      <option value={96}>96 DPI (Web Draft)</option>
-                      <option value={150}>150 DPI (Balanced Standard)</option>
-                      <option value={300}>300 DPI (High Resolution Print)</option>
-                    </select>
+                      onChange={(val) => setDpi(Number(val))}
+                      options={[
+                        { value: 96, label: '96 DPI (Web Draft)', sublabel: 'Fastest rasterization' },
+                        { value: 150, label: '150 DPI (Balanced Standard)', sublabel: 'Recommended default' },
+                        { value: 300, label: '300 DPI (High Resolution Print)', sublabel: 'Maximum crispness' },
+                      ]}
+                    />
                   </div>
                 </div>
               )}
@@ -342,7 +343,7 @@ export default function PdfToolsPage() {
                         className={`rounded-xl px-4 py-2 text-xs font-bold transition border ${
                           rotateDegrees === deg
                             ? 'bg-stone-900 text-white border-stone-900 dark:bg-stone-100 dark:text-stone-900 dark:border-stone-100'
-                            : 'bg-white dark:bg-[#181915] text-stone-700 dark:text-stone-300 border-stone-200 dark:border-white/[0.08] hover:bg-stone-50 dark:hover:bg-[#1F201A]'
+                            : 'glass-card text-stone-700 dark:text-stone-300 hover:bg-white/40 dark:hover:bg-white/[0.05]'
                         }`}
                       >
                         +{deg}° Clockwise
@@ -426,18 +427,18 @@ export default function PdfToolsPage() {
 
               {operation === 'ocr' && (
                 <div className="space-y-2 text-xs">
-                  <label className="block font-semibold text-stone-700 dark:text-stone-300">OCR Language</label>
-                  <select
+                  <CustomSelect
+                    label="OCR Language"
                     value={ocrLanguage}
-                    onChange={(e) => setOcrLanguage(e.target.value)}
-                    className="focus-ring w-full rounded-xl border border-stone-200/80 dark:border-white/[0.08] bg-white dark:bg-[#181915] px-3 py-2 text-xs text-stone-900 dark:text-stone-100"
-                  >
-                    <option value="eng">English (eng)</option>
-                    <option value="deu">German (deu)</option>
-                    <option value="fra">French (fra)</option>
-                    <option value="spa">Spanish (spa)</option>
-                    <option value="ita">Italian (ita)</option>
-                  </select>
+                    onChange={setOcrLanguage}
+                    options={[
+                      { value: 'eng', label: 'English (eng)', sublabel: 'English alphabet and numerals' },
+                      { value: 'deu', label: 'German (deu)', sublabel: 'German umlauts and standard text' },
+                      { value: 'fra', label: 'French (fra)', sublabel: 'French accents and standard text' },
+                      { value: 'spa', label: 'Spanish (spa)', sublabel: 'Spanish tildes and punctuation' },
+                      { value: 'ita', label: 'Italian (ita)', sublabel: 'Italian standard text' },
+                    ]}
+                  />
                   <p className="text-[11px] text-stone-400 dark:text-stone-500">
                     Tesseract recognizes text on scanned pages and inserts an invisible searchable text layer over each page.
                   </p>
@@ -448,14 +449,16 @@ export default function PdfToolsPage() {
 
           {/* Action Trigger */}
           {state === 'idle' && (
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={isBusy}
-              className="focus-ring flex w-full items-center justify-center gap-2 rounded-2xl bg-kiwi-flesh py-4 text-sm sm:text-base font-bold text-white shadow-soft transition hover:bg-kiwi-flesh-600"
-            >
-              <span>Execute {currentOp.label}</span>
-            </button>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isBusy}
+                className="btn-glass-primary w-full sm:w-auto"
+              >
+                <span>Execute {currentOp.label}</span>
+              </button>
+            </div>
           )}
 
           {/* Progress */}

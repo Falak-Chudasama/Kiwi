@@ -9,8 +9,8 @@ interface PageShellProps {
 
 export function PageShell({ title, description, icon, children }: PageShellProps) {
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-8 pb-24 sm:py-12 sm:pb-16">
-      <header className="mb-9">
+    <main className="mx-auto w-full max-w-4xl px-4 pt-6 sm:pt-8 pb-20 sm:pb-16">
+      <header className="mb-7 sm:mb-8">
         <div className="flex items-center gap-3">
           {icon && (
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-black/[0.04] dark:border-white/[0.08] shadow-2xs [&>svg]:h-5 [&>svg]:w-5">

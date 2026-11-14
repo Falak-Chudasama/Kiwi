@@ -109,7 +109,7 @@ export function FormatPicker({ options, value, onChange, priorityGroup }: Format
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search formats (e.g. webp, docx, pdf)..."
-            className="focus-ring w-full rounded-xl border border-stone-200/90 dark:border-white/[0.08] bg-white dark:bg-[#181915] pl-11 pr-10 py-2.5 text-sm sm:text-base text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 transition hover:border-stone-300 dark:hover:border-stone-700 focus:border-kiwi-flesh dark:focus:border-kiwi-lime"
+            className="focus-ring w-full rounded-xl border border-stone-200/90 dark:border-white/[0.08] glass-card pl-11 pr-10 py-2.5 text-sm sm:text-base text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 transition hover:border-stone-300 dark:hover:border-stone-700 focus:border-kiwi-flesh dark:focus:border-kiwi-lime"
           />
           {search && (
             <button
@@ -174,8 +174,8 @@ export function FormatPicker({ options, value, onChange, priorityGroup }: Format
                         isSelected
                           ? 'border-kiwi-flesh bg-kiwi-flesh text-white shadow-soft ring-2 ring-kiwi-flesh/20 font-bold dark:border-kiwi-lime dark:bg-kiwi-flesh dark:ring-kiwi-lime/30'
                           : isAvailable
-                            ? 'border-stone-200/90 dark:border-white/[0.08] bg-white dark:bg-[#181915] text-stone-800 dark:text-stone-200 hover:border-kiwi-flesh/50 dark:hover:border-kiwi-lime/50 hover:bg-stone-50 dark:hover:bg-[#1F201A] shadow-2xs'
-                            : 'cursor-not-allowed border-stone-100 dark:border-stone-800/60 bg-stone-50 dark:bg-[#141512] text-stone-300 dark:text-stone-600 opacity-60'
+                            ? 'border-stone-200/90 dark:border-white/[0.08] glass-card text-stone-800 dark:text-stone-200 hover:border-kiwi-flesh/50 dark:hover:border-kiwi-lime/50 hover:bg-white/45 dark:hover:bg-white/[0.05] shadow-2xs'
+                            : 'cursor-not-allowed border-stone-100 dark:border-stone-800/60 bg-stone-50/50 dark:bg-[#141512]/50 text-stone-300 dark:text-stone-600 opacity-60'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">

@@ -17,6 +17,7 @@ import { TextField } from '../components/ui/TextField'
 import { useJobRunner } from '../hooks/useJobRunner'
 import { fetchTargets } from '../lib/api'
 import { useToast } from '../components/ui/ToastProvider'
+import { playEnter } from '../lib/sound'
 
 const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.webp,.avif,.gif,.bmp,.tiff,.tif,.ico,.heic,.heif,.svg'
 
@@ -51,6 +52,7 @@ export default function ImageConvertPage() {
 
   const handleConvert = async () => {
     if (!files.length || !targetExt) return
+    playEnter()
     const formData = new FormData()
     files.forEach((f) => formData.append('files', f))
     formData.append('target_ext', targetExt)
@@ -116,9 +118,23 @@ export default function ImageConvertPage() {
             ))}
           </div>
 
+          {/* Action Bar - Prominently positioned above picker */}
+          {state === 'idle' && targetExt && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleConvert}
+                disabled={isBusy}
+                className="btn-glass-primary w-full sm:w-auto"
+              >
+                <span>Convert {files.length > 1 ? `${files.length} Images` : 'Image'} to {targetExt.toUpperCase()}</span>
+              </button>
+            </div>
+          )}
+
           {/* Target Format Picker */}
           {state === 'idle' && (
-            <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft">
+            <div className="glass-panel rounded-2xl p-6 shadow-soft">
               <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 Target Image Format
               </h2>
@@ -133,7 +149,7 @@ export default function ImageConvertPage() {
 
           {/* Collapsible Advanced Resizing Section */}
           {state === 'idle' && (
-            <div className="overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] shadow-soft transition">
+            <div className="glass-panel overflow-hidden rounded-2xl shadow-soft transition">
               <button
                 type="button"
                 onClick={() => setShowAdvanced((prev) => !prev)}
@@ -197,18 +213,6 @@ export default function ImageConvertPage() {
                 </div>
               )}
             </div>
-          )}
-
-          {/* Action Bar */}
-          {state === 'idle' && targetExt && (
-            <button
-              type="button"
-              onClick={handleConvert}
-              disabled={isBusy}
-              className="focus-ring flex w-full items-center justify-center gap-2 rounded-2xl bg-kiwi-flesh py-4 text-sm sm:text-base font-bold text-white shadow-soft transition hover:bg-kiwi-flesh-600"
-            >
-              <span>Convert {files.length > 1 ? `${files.length} Images` : 'Image'} to {targetExt.toUpperCase()}</span>
-            </button>
           )}
 
           {/* Progress */}

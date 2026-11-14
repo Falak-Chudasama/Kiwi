@@ -53,9 +53,12 @@ def download_result(job_id: str, file_index: int, response: Response):
             detail="Output file is no longer available on this server.",
         )
 
-    # Privacy: strict cache control headers
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
+    # Privacy & download headers
+    headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Access-Control-Expose-Headers": "Content-Disposition",
+    }
 
     # NOTE: Repeated downloads do NOT extend retention. Hard deadline from completion.
     return FileResponse(
@@ -63,4 +66,5 @@ def download_result(job_id: str, file_index: int, response: Response):
         filename=result.name,
         media_type=result.media_type,
         content_disposition_type="attachment",
+        headers=headers,
     )

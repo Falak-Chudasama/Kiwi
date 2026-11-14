@@ -1,0 +1,43 @@
+# Kiwi UI Sound Effects (SFX) Guide
+
+This folder holds audio files for Kiwi's UI sound effects.
+All audio files must be MP3 format with standard 44.1kHz or 48kHz stereo/mono encoding.
+
+## Sound Categories & File Names
+
+Kiwi looks for the following specific sound files in this directory:
+
+1. Category: "Scroll"
+   Filename: scroll.mp3
+   Event: Fired when scrolling lists, multi-page carousels, or document views.
+   Recommended sound: A very soft, subtle tactile tick, flutter, or paper-friction click (~30-60ms).
+
+2. Category: "Enter"
+   Filename: enter.mp3
+   Event: Fired when entering a major tool, confirming an action, clicking primary action buttons
+          (e.g., "Convert File", "Scan", "Apply Crop", "Merge PDF").
+   Recommended sound: A crisp, pleasant Apple-like positive affirmation click or soft chime (~80-150ms).
+
+3. Category: "Back"
+   Filename: back.mp3
+   Event: Fired when navigating back, canceling an action, clearing selections, closing modals,
+          or closing the camera scanner view.
+   Recommended sound: A gentle descending tone, subtle dismiss tap, or soft pop (~70-120ms).
+
+4. Category: "Failed/Cannot be Accessed"
+   Filename: failed.mp3
+   Event: Fired when a file conversion fails, a download cannot be retrieved, camera access is denied,
+          or an invalid file/format combination is encountered.
+   Recommended sound: A gentle, non-jarring low alert or double-tap error tone (~150-250ms).
+
+5. Category: "Notification"
+   Filename: notification.mp3
+   Event: Fired when an informational or success toast notification pops up, or when an offline job
+          finishes processing in the background.
+   Recommended sound: A crisp, friendly glass ding, soft marimba chord, or clean bubble chime (~120-250ms).
+
+## Graceful Fallback Behavior
+
+- If any or all of these MP3 files are missing from this folder, Kiwi continues to work 100% normally and silently.
+- No network errors, 404 console warnings, or user-facing alerts will appear if audio files are absent.
+- Audio volume is kept gentle (35-45% master volume) to maintain a quiet, calm offline workspace aesthetic.

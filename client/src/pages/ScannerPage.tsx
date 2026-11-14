@@ -16,12 +16,13 @@ import {
 import { PageShell } from '../components/layout/PageShell'
 import { CameraCapture } from '../components/features/CameraCapture'
 import { CropEditor } from '../components/features/CropEditor'
+import { ResultPanel } from '../components/features/ResultPanel'
+import { CustomSelect, type SelectOption } from '../components/ui/CustomSelect'
 import {
   detectDocument,
   fetchScannerPresets,
   type ScannerPreset,
   type DocumentDetectResponse,
-  downloadUrl,
 } from '../lib/api'
 import { useJobRunner } from '../hooks/useJobRunner'
 
@@ -53,7 +54,7 @@ export default function ScannerPage() {
   const [sharpness, setSharpness] = useState<number>(0.3)
   const [dewarp, setDewarp] = useState<boolean>(false)
 
-  const { state, progress, results, errorMessage, isBusy, run, reset } = useJobRunner()
+  const { state, progress, jobId, results, errorMessage, isBusy, run, reset } = useJobRunner()
 
   // Load presets on mount
   useEffect(() => {
@@ -174,6 +175,7 @@ export default function ScannerPage() {
     <PageShell
       title="Scanner"
       description="Quiet, offline document digitization with perspective rectification and OCR."
+      icon={<Camera className="h-4 w-4" />}
     >
       <div className="flex flex-col gap-6 max-w-4xl mx-auto">
         {/* Camera Modal View */}
@@ -187,42 +189,16 @@ export default function ScannerPage() {
         )}
 
         {/* State: Done with output */}
-        {state === 'done' && results.length > 0 ? (
-          <div className="p-8 rounded-3xl bg-white dark:bg-[#181915] border border-black/[0.06] dark:border-white/[0.08] shadow-sm flex flex-col items-center text-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center">
-              <CheckCircle2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <h3 className="text-xl font-bold text-stone-900 dark:text-white">
-              Scan Complete
-            </h3>
-            <p className="text-sm text-stone-600 dark:text-stone-300 max-w-md">
-              Your document has been processed, perspective-rectified, and enhanced completely offline.
-            </p>
-
-            <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
-              {results.map((res, idx) => (
-                <a
-                  key={idx}
-                  href={downloadUrl(results[0].name ? (results as any)[0].id || '' : '', idx)}
-                  download={res.name}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-kiwi-flesh dark:bg-kiwi-lime text-white dark:text-stone-950 font-bold text-sm shadow-sm hover:opacity-95 transition"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download {res.name}</span>
-                </a>
-              ))}
-              <button
-                type="button"
-                onClick={() => {
-                  reset()
-                  setPages([])
-                }}
-                className="px-5 py-2.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200 font-semibold text-sm hover:bg-stone-200 dark:hover:bg-stone-700 transition"
-              >
-                Scan Another
-              </button>
-            </div>
-          </div>
+        {state === 'done' && jobId && results.length > 0 ? (
+          <ResultPanel
+            jobId={jobId}
+            results={results}
+            kind="scanner_process"
+            onReset={() => {
+              reset()
+              setPages([])
+            }}
+          />
         ) : pages.length === 0 ? (
           /* State 1: Capture or Import Dropzone */
           <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-stone-300 dark:border-stone-700 rounded-3xl bg-white/50 dark:bg-stone-900/30 text-center gap-5 transition">
@@ -265,7 +241,7 @@ export default function ScannerPage() {
           /* State 2: Review, Crop, Preset & Export Workspace */
           <div className="flex flex-col gap-6">
             {/* Top Toolbar: Thumbnails & Page Controls */}
-            <div className="flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-[#181915] border border-black/[0.06] dark:border-white/[0.08] shadow-xs">
+            <div className="glass-panel flex items-center justify-between p-3 rounded-2xl shadow-xs">
               <div className="flex items-center gap-2 overflow-x-auto py-1 max-w-lg">
                 {pages.map((p, idx) => (
                   <button
@@ -339,7 +315,7 @@ export default function ScannerPage() {
             )}
 
             {/* Presets Row */}
-            <div className="flex flex-col gap-2 p-4 rounded-2xl bg-white dark:bg-[#181915] border border-black/[0.06] dark:border-white/[0.08]">
+            <div className="glass-panel flex flex-col gap-2 p-4 rounded-2xl">
               <div className="flex items-center justify-between text-xs font-bold text-stone-500 dark:text-stone-400">
                 <span>ENHANCEMENT PRESET</span>
                 <button
@@ -435,29 +411,26 @@ export default function ScannerPage() {
             </div>
 
             {/* Export Format Selector & Primary Action */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-5 rounded-3xl bg-white dark:bg-[#181915] border border-black/[0.06] dark:border-white/[0.08] shadow-sm">
-              <div className="flex items-center gap-3">
-                <FileCheck className="w-5 h-5 text-kiwi-flesh dark:text-kiwi-lime" />
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-stone-500 dark:text-stone-400">OUTPUT FORMAT</span>
-                  <select
-                    value={outputFormat}
-                    onChange={(e) => setOutputFormat(e.target.value)}
-                    className="bg-transparent text-sm font-bold text-stone-900 dark:text-white focus:outline-none cursor-pointer"
-                  >
-                    <option value="pdf_searchable">Searchable PDF (with OCR)</option>
-                    <option value="pdf_image">Image-only PDF</option>
-                    <option value="images_zip">Enhanced Images (.zip)</option>
-                    <option value="txt">Extracted Text (.txt)</option>
-                  </select>
-                </div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-3xl bg-white/70 dark:bg-[#181915]/70 backdrop-blur-xl border border-black/[0.06] dark:border-white/[0.08] shadow-sm">
+              <div className="flex-1 max-w-sm">
+                <CustomSelect
+                  label="Output Format"
+                  value={outputFormat}
+                  onChange={(val) => setOutputFormat(val)}
+                  options={[
+                    { value: 'pdf_searchable', label: 'Searchable PDF (with OCR)', sublabel: 'Embedded text layer for full searching' },
+                    { value: 'pdf_image', label: 'Image-only PDF', sublabel: 'Crisp page layout without text layer' },
+                    { value: 'images_zip', label: 'Enhanced Images (.zip)', sublabel: 'Archive of perspective-corrected images' },
+                    { value: 'txt', label: 'Extracted Text (.txt)', sublabel: 'Plain text OCR transcript' },
+                  ]}
+                />
               </div>
 
               <button
                 type="button"
                 onClick={handleProcessScan}
                 disabled={isBusy}
-                className="w-full sm:w-auto px-8 py-3 rounded-full bg-kiwi-flesh dark:bg-kiwi-lime text-white dark:text-stone-950 font-bold text-sm shadow-sm hover:opacity-95 transition disabled:opacity-50"
+                className="btn-glass-primary w-full sm:w-auto"
               >
                 {isBusy ? `Scanning (${progress}%)...` : `Scan ${pages.length} Page${pages.length > 1 ? 's' : ''}`}
               </button>

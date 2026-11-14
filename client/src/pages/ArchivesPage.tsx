@@ -70,7 +70,7 @@ export default function ArchivesPage() {
       icon={<Archive className="h-4 w-4" />}
     >
       {/* Mode Switcher */}
-      <div className="flex gap-2 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-2 shadow-soft">
+      <div className="glass-panel flex gap-2 rounded-2xl p-2 shadow-soft">
         <button
           type="button"
           onClick={() => switchMode('create')}
@@ -141,7 +141,7 @@ export default function ArchivesPage() {
 
           {/* Creation Options */}
           {mode === 'create' && state === 'idle' && (
-            <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-6 shadow-soft space-y-5">
+            <div className="glass-panel rounded-2xl p-6 shadow-soft space-y-5">
               <h2 className="text-sm font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 Archive Format & Naming
               </h2>
@@ -178,14 +178,16 @@ export default function ArchivesPage() {
 
           {/* Action Trigger */}
           {state === 'idle' && (
-            <button
-              type="button"
-              onClick={handleRun}
-              disabled={isBusy}
-              className="focus-ring flex w-full items-center justify-center gap-2 rounded-2xl bg-kiwi-flesh py-4 text-sm sm:text-base font-bold text-white shadow-soft transition hover:bg-kiwi-flesh-600"
-            >
-              <span>{mode === 'create' ? 'Create Archive Package' : 'Extract Archive Contents'}</span>
-            </button>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleRun}
+                disabled={isBusy}
+                className="btn-glass-primary w-full sm:w-auto"
+              >
+                <span>{mode === 'create' ? 'Create Archive Package' : 'Extract Archive Contents'}</span>
+              </button>
+            </div>
           )}
 
           {/* Progress */}

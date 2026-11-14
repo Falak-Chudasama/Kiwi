@@ -12,21 +12,46 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 const STORAGE_KEY = 'kiwi_theme'
+const MANUAL_KEY = 'kiwi_theme_manual'
+
+/**
+ * Returns 'dark' for evening/night (>= 19:00 / 7 PM or < 06:00 / 6 AM)
+ * and 'light' for daytime (06:00 to 18:59).
+ */
+export function getTimeBasedTheme(): Theme {
+  const hour = new Date().getHours()
+  return (hour >= 19 || hour < 6) ? 'dark' : 'light'
+}
 
 function getInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'light'
+
+  // If a URL parameter ?theme=light or ?theme=dark is provided, respect it
   try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved === 'light' || saved === 'dark') {
-      return saved
-    }
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark'
+    const params = new URLSearchParams(window.location.search)
+    const urlTheme = params.get('theme')
+    if (urlTheme === 'light' || urlTheme === 'dark') {
+      return urlTheme
     }
   } catch {
-    // fallback if localStorage is disabled
+    // fallback
   }
-  return 'light'
+
+  // If user already explicitly manually chose a mode in this session, respect it
+  try {
+    const isManual = sessionStorage.getItem(MANUAL_KEY)
+    if (isManual === 'true') {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved === 'light' || saved === 'dark') {
+        return saved
+      }
+    }
+  } catch {
+    // fallback
+  }
+
+  // Otherwise, automatically detect current time of day on launch
+  return getTimeBasedTheme()
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -53,13 +78,34 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [theme])
 
+  // Periodic automatic day/night time check (every 60s) if user hasn't manually overridden
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        const isManual = sessionStorage.getItem(MANUAL_KEY)
+        if (isManual !== 'true') {
+          const autoTheme = getTimeBasedTheme()
+          setThemeState((current) => (current !== autoTheme ? autoTheme : current))
+        }
+      } catch {
+        // ignore
+      }
+    }, 60000)
+
+    return () => clearInterval(interval)
+  }, [])
+
   // Listen to OS theme changes if user hasn't manually set one yet
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
     const handleChange = (e: MediaQueryListEvent) => {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (!saved) {
-        setThemeState(e.matches ? 'dark' : 'light')
+      try {
+        const isManual = sessionStorage.getItem(MANUAL_KEY)
+        if (isManual !== 'true') {
+          setThemeState(getTimeBasedTheme())
+        }
+      } catch {
+        // ignore
       }
     }
 
@@ -68,10 +114,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const toggleTheme = () => {
+    try {
+      sessionStorage.setItem(MANUAL_KEY, 'true')
+    } catch {}
     setThemeState((prev) => (prev === 'dark' ? 'light' : 'dark'))
   }
 
   const setTheme = (newTheme: Theme) => {
+    try {
+      sessionStorage.setItem(MANUAL_KEY, 'true')
+    } catch {}
     setThemeState(newTheme)
   }
 

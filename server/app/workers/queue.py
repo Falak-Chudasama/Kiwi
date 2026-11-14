@@ -114,7 +114,7 @@ class TaskQueue:
     def _result_files(self, paths: list[str]) -> list[ResultFile]:
         results: list[ResultFile] = []
         for raw_path in paths:
-            path = Path(raw_path)
+            path = Path(raw_path).resolve()
             if path.exists() and path.is_file():
                 results.append(
                     ResultFile(

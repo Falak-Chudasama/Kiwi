@@ -11,7 +11,7 @@ export function ProgressPanel({ label, progress, onCancel }: ProgressPanelProps)
     <div
       role="status"
       aria-live="polite"
-      className="rounded-2xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#181915] p-5 shadow-soft animate-scale-in"
+      className="glass-panel rounded-2xl p-5 shadow-soft animate-scale-in"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5 text-xs font-semibold text-stone-900 dark:text-stone-100">
